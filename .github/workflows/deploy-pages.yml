@@ -29,12 +29,13 @@ jobs:
           test -f index.html
           test -f styles.css
           test -f app.js
+          test -f runtime-config.js
 
       - name: Build static site directory
         run: |
           rm -rf dist
           mkdir -p dist
-          cp index.html styles.css app.js dist/
+          cp index.html styles.css app.js runtime-config.js dist/
           touch dist/.nojekyll
 
       - name: Validate generated files
@@ -42,6 +43,7 @@ jobs:
           test -s dist/index.html
           test -s dist/styles.css
           test -s dist/app.js
+          test -s dist/runtime-config.js
 
       - name: Upload preview artifact
         uses: actions/upload-artifact@v4
@@ -63,7 +65,7 @@ jobs:
         run: |
           rm -rf dist
           mkdir -p dist
-          cp index.html styles.css app.js dist/
+          cp index.html styles.css app.js runtime-config.js dist/
           touch dist/.nojekyll
 
       - name: Deploy to gh-pages branch
