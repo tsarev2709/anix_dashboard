@@ -7,4 +7,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.amocrm-sync]
-verify_jwt = true
+verify_jwt = false
+
+[functions.sales-summary]
+verify_jwt = false
