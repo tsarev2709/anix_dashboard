@@ -18,37 +18,45 @@
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.2<br><span>готов к Supabase</span></div>
+      <div class="sidebar-note">Прототип v0.3<br><span>amoCRM подключена</span></div>
     </aside>
 
     <main>
       <header class="topbar">
         <div><p class="eyebrow">Центр управления бизнесом</p><h1 id="page-title">Обзор компании</h1></div>
-        <div class="header-actions"><span class="sync" id="globalSync">● Демо-режим</span><button id="exportBtn">Скачать срез JSON</button></div>
+        <div class="header-actions"><span class="sync" id="globalSync">● Загружаю данные</span><button id="exportBtn">Скачать срез JSON</button></div>
       </header>
 
       <section id="overview" class="view active">
         <article class="hero-card">
-          <div><p class="eyebrow">Главное ограничение</p><h2>Нет данных о фактической загрузке команды</h2><p>Сейчас нельзя уверенно понять, нужен ли новый нейрохудожник или проблема находится в согласованиях и ожидании клиента.</p></div>
+          <div><p class="eyebrow">Главное ограничение</p><h2>Нет данных о фактической загрузке команды</h2><p>Продажи уже подключены. Следующее ключевое ограничение — сроки, очередь и загрузка производства из YouGile.</p></div>
           <span class="risk-badge">Высокий приоритет</span>
         </article>
         <div class="status-grid" id="statusGrid"></div>
         <div class="metric-grid" id="metricGrid"></div>
         <div class="two-col">
-          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Воронка продаж</p><h3>От касания до оплаты</h3></div><span>30 дней</span></div><div id="funnel"></div></section>
-          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Проекты</p><h3>Риски производства</h3></div><span>4 активных</span></div><div id="projects"></div></section>
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Воронка продаж</p><h3>Текущие открытые сделки</h3></div><span id="overviewSalesUpdated">amoCRM</span></div><div id="funnel"></div></section>
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Проекты</p><h3>Риски производства</h3></div><span>демо до YouGile</span></div><div id="projects"></div></section>
         </div>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Недостающие данные</p><h3>Что мешает принимать решения</h3></div><button class="ghost" data-view-jump="data">Открыть аудит</button></div><div id="missingPreview" class="missing-grid"></div></section>
       </section>
 
-      <section id="sales" class="view"><div class="section-placeholder"><h2>Продажи</h2><p>Сюда подключается amoCRM: касания, ответы, встречи, КП, сделки, средний чек и скорость прохождения этапов.</p></div></section>
+      <section id="sales" class="view">
+        <article class="panel source-intro"><div><p class="eyebrow">amoCRM</p><h2>Продажи</h2><p id="salesNotice">Загружаю реальные сделки и этапы…</p></div><button id="refreshSales">Обновить</button></article>
+        <div class="metric-grid" id="salesMetricGrid"></div>
+        <div class="two-col">
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Открытая воронка</p><h3>Количество и сумма по этапам</h3></div><span id="salesUpdated"></span></div><div id="salesStages"></div></section>
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Последние изменения</p><h3>Недавно обновлённые сделки</h3></div></div><div id="recentLeads"></div></section>
+        </div>
+      </section>
+
       <section id="production" class="view"><div class="section-placeholder"><h2>Производство</h2><p>Сюда подключается YouGile: задачи, этапы проекта, сроки, задержки, правки и загрузка команды.</p></div></section>
       <section id="finance" class="view"><div class="section-placeholder"><h2>Финансы</h2><p>Сюда подключается Точка: остатки, входящие, исходящие, расходы по проектам и прогноз денежного потока.</p></div></section>
       <section id="data" class="view">
         <div class="panel"><div class="panel-head"><div><p class="eyebrow">Аудит измеримости</p><h3>Каких данных не хватает сейчас</h3></div><span id="coverageLabel"></span></div><div id="dataAudit"></div></div>
       </section>
       <section id="sources" class="view">
-        <article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Function. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article>
+        <article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Functions. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article>
         <div id="sourceNotice" class="notice"></div>
         <div id="sourcesGrid" class="sources-grid"></div>
       </section>
