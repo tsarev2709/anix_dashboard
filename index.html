@@ -3,27 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ANIX — операционная панель</title>
+  <title>Anix — операционная панель</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">A</span><div><strong>ANIX</strong><small>операционная панель</small></div></div>
+      <div class="brand"><span class="brand-mark">A</span><div><strong>Anix</strong><small>операционная панель</small></div></div>
       <nav>
         <button class="nav-item active" data-view="overview">Обзор</button>
         <button class="nav-item" data-view="sales">Продажи</button>
         <button class="nav-item" data-view="production">Производство</button>
         <button class="nav-item" data-view="finance">Финансы</button>
         <button class="nav-item" data-view="data">Данные</button>
+        <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.1<br><span>данные демонстрационные</span></div>
+      <div class="sidebar-note">Прототип v0.2<br><span>готов к Supabase</span></div>
     </aside>
 
     <main>
       <header class="topbar">
         <div><p class="eyebrow">Центр управления бизнесом</p><h1 id="page-title">Обзор компании</h1></div>
-        <div class="header-actions"><span class="sync">● Срез обновлён сегодня</span><button id="exportBtn">Скачать срез JSON</button></div>
+        <div class="header-actions"><span class="sync" id="globalSync">● Демо-режим</span><button id="exportBtn">Скачать срез JSON</button></div>
       </header>
 
       <section id="overview" class="view active">
@@ -31,27 +32,29 @@
           <div><p class="eyebrow">Главное ограничение</p><h2>Нет данных о фактической загрузке команды</h2><p>Сейчас нельзя уверенно понять, нужен ли новый нейрохудожник или проблема находится в согласованиях и ожидании клиента.</p></div>
           <span class="risk-badge">Высокий приоритет</span>
         </article>
-
         <div class="status-grid" id="statusGrid"></div>
         <div class="metric-grid" id="metricGrid"></div>
-
         <div class="two-col">
           <section class="panel"><div class="panel-head"><div><p class="eyebrow">Воронка продаж</p><h3>От касания до оплаты</h3></div><span>30 дней</span></div><div id="funnel"></div></section>
           <section class="panel"><div class="panel-head"><div><p class="eyebrow">Проекты</p><h3>Риски производства</h3></div><span>4 активных</span></div><div id="projects"></div></section>
         </div>
-
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Недостающие данные</p><h3>Что мешает принимать решения</h3></div><button class="ghost" data-view-jump="data">Открыть аудит</button></div><div id="missingPreview" class="missing-grid"></div></section>
       </section>
 
-      <section id="sales" class="view"><div class="section-placeholder"><h2>Продажи</h2><p>В следующей версии сюда подключается amoCRM: касания, ответы, встречи, КП, сделки, средний чек и скорость прохождения этапов.</p></div></section>
-      <section id="production" class="view"><div class="section-placeholder"><h2>Производство</h2><p>В следующей версии сюда подключается YouGile: задачи, этапы проекта, сроки, задержки, правки и загрузка команды.</p></div></section>
-      <section id="finance" class="view"><div class="section-placeholder"><h2>Финансы</h2><p>В следующей версии сюда подключается Точка: остатки, входящие, исходящие, расходы по проектам и прогноз денежного потока.</p></div></section>
+      <section id="sales" class="view"><div class="section-placeholder"><h2>Продажи</h2><p>Сюда подключается amoCRM: касания, ответы, встречи, КП, сделки, средний чек и скорость прохождения этапов.</p></div></section>
+      <section id="production" class="view"><div class="section-placeholder"><h2>Производство</h2><p>Сюда подключается YouGile: задачи, этапы проекта, сроки, задержки, правки и загрузка команды.</p></div></section>
+      <section id="finance" class="view"><div class="section-placeholder"><h2>Финансы</h2><p>Сюда подключается Точка: остатки, входящие, исходящие, расходы по проектам и прогноз денежного потока.</p></div></section>
       <section id="data" class="view">
         <div class="panel"><div class="panel-head"><div><p class="eyebrow">Аудит измеримости</p><h3>Каких данных не хватает сейчас</h3></div><span id="coverageLabel"></span></div><div id="dataAudit"></div></div>
-        <div class="panel"><div class="panel-head"><div><p class="eyebrow">Следующий шаг</p><h3>Приоритет подключения источников</h3></div></div><ol class="priority-list"><li><strong>amoCRM</strong><span>Получить реальную воронку и прогноз продаж.</span></li><li><strong>YouGile</strong><span>Увидеть сроки, загрузку и причины задержек.</span></li><li><strong>Точка</strong><span>Связать сделки с деньгами и прибыльностью.</span></li><li><strong>Telegram</strong><span>Позже — фиксировать решения и сигналы риска.</span></li></ol></div>
+      </section>
+      <section id="sources" class="view">
+        <article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Function. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article>
+        <div id="sourceNotice" class="notice"></div>
+        <div id="sourcesGrid" class="sources-grid"></div>
       </section>
     </main>
   </div>
+  <script src="runtime-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
