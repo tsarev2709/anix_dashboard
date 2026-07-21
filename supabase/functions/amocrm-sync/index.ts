@@ -1,10 +1,24 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const jsonHeaders = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+const jsonHeaders = {
+  'Content-Type': 'application/json; charset=utf-8',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-anix-sync-key',
+};
 const toIso = (value?: number | null) => value ? new Date(value * 1000).toISOString() : null;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: jsonHeaders });
+
+  const expectedKey = Deno.env.get('ANIX_SYNC_KEY');
+  const suppliedKey = req.headers.get('x-anix-sync-key');
+  if (!expectedKey || suppliedKey !== expectedKey) {
+    return new Response(JSON.stringify({ ok: false, error: 'Unauthorized sync request' }), {
+      status: 401,
+      headers: jsonHeaders,
+    });
+  }
+
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   let runId: number | null = null;
   try {
@@ -23,13 +37,19 @@ Deno.serve(async (req) => {
       const clientSecret = Deno.env.get('AMOCRM_CLIENT_SECRET');
       const redirectUri = Deno.env.get('AMOCRM_REDIRECT_URI');
       const refreshResponse = await fetch(`https://${credential.account_domain}/oauth2/access_token`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token', refresh_token: credential.refresh_token, redirect_uri: redirectUri }),
       });
       const refreshed = await refreshResponse.json();
       if (!refreshResponse.ok) throw new Error(`amoCRM refresh failed: ${JSON.stringify(refreshed)}`);
       accessToken = refreshed.access_token;
-      await supabase.from('integration_credentials').update({ access_token: refreshed.access_token, refresh_token: refreshed.refresh_token, token_expires_at: new Date(Date.now() + Number(refreshed.expires_in || 86400) * 1000).toISOString(), updated_at: new Date().toISOString() }).eq('source_slug', 'amocrm');
+      await supabase.from('integration_credentials').update({
+        access_token: refreshed.access_token,
+        refresh_token: refreshed.refresh_token,
+        token_expires_at: new Date(Date.now() + Number(refreshed.expires_in || 86400) * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('source_slug', 'amocrm');
     }
 
     const api = async (path: string) => {
