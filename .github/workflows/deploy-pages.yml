@@ -1,0 +1,75 @@
+name: Build and deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate static dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f app.js
+
+      - name: Build static site directory
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          cp index.html styles.css app.js dist/
+          touch dist/.nojekyll
+
+      - name: Validate generated files
+        run: |
+          test -s dist/index.html
+          test -s dist/styles.css
+          test -s dist/app.js
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anix-dashboard-static-site
+          path: dist
+          if-no-files-found: error
+
+  deploy:
+    name: Publish to gh-pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build static site directory
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          cp index.html styles.css app.js dist/
+          touch dist/.nojekyll
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
