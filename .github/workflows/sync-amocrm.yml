@@ -1,6 +1,11 @@
 name: Sync amoCRM
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/sync-amocrm.yml'
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
