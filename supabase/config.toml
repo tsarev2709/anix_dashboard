@@ -2,3 +2,9 @@ project_id = "uuywdscpywuoacbbjhhb"
 
 [functions.source-status]
 verify_jwt = false
+
+[functions.amocrm-oauth]
+verify_jwt = false
+
+[functions.amocrm-sync]
+verify_jwt = true
