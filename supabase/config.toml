@@ -1,0 +1,4 @@
+project_id = "anix-dashboard"
+
+[functions.source-status]
+verify_jwt = false
