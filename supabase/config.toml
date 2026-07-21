@@ -1,4 +1,4 @@
-project_id = "anix-dashboard"
+project_id = "uuywdscpywuoacbbjhhb"
 
 [functions.source-status]
 verify_jwt = false
