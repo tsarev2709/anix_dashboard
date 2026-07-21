@@ -1,0 +1,35 @@
+name: Sync amoCRM
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: amocrm-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      ANIX_SYNC_KEY: ${{ secrets.ANIX_SYNC_KEY }}
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          test -n "$SUPABASE_PROJECT_ID"
+          test -n "$ANIX_SYNC_KEY"
+
+      - name: Run amoCRM synchronization
+        shell: bash
+        run: |
+          response=$(curl --fail-with-body --silent --show-error \
+            -H "x-anix-sync-key: $ANIX_SYNC_KEY" \
+            "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/amocrm-sync")
+          echo "$response"
+          echo "$response" | grep -q '"ok":true'
