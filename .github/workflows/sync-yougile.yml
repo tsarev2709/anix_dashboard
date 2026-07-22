@@ -61,3 +61,11 @@ jobs:
           fi
 
           grep -q '"ok":true' "$tmp_file"
+          projects=$(jq -r '.counts.projects // 0' "$tmp_file")
+          tasks=$(jq -r '.counts.tasks // 0' "$tmp_file")
+          echo "Imported projects: $projects"
+          echo "Imported tasks: $tasks"
+          if [ "$projects" -lt 1 ]; then
+            echo "YouGile returned no projects; treating sync as failed."
+            exit 1
+          fi
