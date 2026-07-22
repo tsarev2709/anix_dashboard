@@ -20,7 +20,7 @@
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.7<br><span>здоровье продаж</span></div>
+      <div class="sidebar-note">Прототип v0.8<br><span>событийный КПЭ</span></div>
     </aside>
 
     <main>
@@ -38,10 +38,22 @@
       </section>
 
       <section id="sales" class="view">
-        <article class="sales-command panel"><div><p class="eyebrow">Отдел продаж · текущий месяц</p><h2 id="salesVerdict">Считаю выполнение плана…</h2><p id="salesNotice">Загружаю реальные сделки и этапы…</p></div><div class="command-score"><strong id="salesScore">—</strong><span>прогноз выполнения измеримых KPI</span><button id="refreshSales">Обновить</button></div></article>
+        <article class="sales-command panel"><div><p class="eyebrow">Отдел продаж · текущий месяц</p><h2 id="salesVerdict">Считаю выполнение плана…</h2><p id="salesNotice">Загружаю реальные сделки и этапы…</p></div><div class="command-score"><strong id="salesScore">—</strong><span>прогноз выполнения событийного КПЭ</span><button id="refreshSales">Обновить</button></div></article>
         <div class="sales-summary-grid" id="salesMetricGrid"></div>
-        <section class="panel"><div class="panel-head"><div><p class="eyebrow">План и показатели</p><h3>План → факт → прогноз месяца</h3></div><span id="salesPeriod"></span></div><div class="kpi-table" id="salesKpis"></div></section>
-        <div class="sales-main-grid"><section class="panel pyramid-panel"><div class="panel-head"><div><p class="eyebrow">Пирамида метрик</p><h3>Где именно ломается воронка</h3></div><span>сверху — результат</span></div><div id="metricPyramid" class="metric-pyramid"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ответственный продавец</p><h3>Текущая нагрузка</h3></div><span>1 активный продавец</span></div><div id="managerPerformance"></div></section></div>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">План и показатели</p><h3>Месячный КПЭ: план → факт → прогноз</h3></div><span id="salesPeriod"></span></div><div class="kpi-table" id="salesKpis"></div></section>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Как считается КПЭ</p><h3>События месяца, а не текущее положение карточек</h3></div><span id="flowUpdated">загрузка…</span></div>
+          <p class="history-caveat" id="kpiMethod">Загружаю формулу расчёта…</p>
+          <div id="monthlyFlow" class="metric-pyramid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">КПЭ по сотрудникам</p><h3>Кто создал результат за месяц</h3></div><span>по ответственному в сделке</span></div>
+          <div id="managerKpiBreakdown"></div>
+        </section>
+
+        <div class="sales-main-grid"><section class="panel pyramid-panel"><div class="panel-head"><div><p class="eyebrow">Пирамида метрик</p><h3>Что произошло за месяц</h3></div><span>сверху — результат</span></div><div id="metricPyramid" class="metric-pyramid"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ответственный продавец</p><h3>Текущая нагрузка</h3></div><span>по данным amoCRM</span></div><div id="managerPerformance"></div></section></div>
 
         <section class="panel sales-health-panel">
           <div class="panel-head"><div><p class="eyebrow">Здоровье отдела продаж</p><h3>Что работает и что исправить сегодня</h3></div><span id="healthUpdated">загрузка…</span></div>
@@ -59,21 +71,9 @@
           <article class="bottleneck-card" id="bottleneckRecommendation"><strong>Считаю главный этап для ускорения…</strong></article>
         </section>
 
-        <section class="panel">
-          <div class="panel-head"><div><p class="eyebrow">Длительность переходов</p><h3>Сколько занимает каждый участок сделки</h3></div><span>только завершённые переходы</span></div>
-          <div id="segmentCycles"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head"><div><p class="eyebrow">Прогноз поступлений</p><h3>Взвешенный прогноз по поздним этапам</h3></div><span id="cashForecastCoverage">загрузка…</span></div>
-          <div id="cashForecast"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head"><div><p class="eyebrow">Возраст этапов</p><h3>Сколько сделки лежат в каждой колонке</h3></div><span>производство не участвует в рекомендации</span></div>
-          <div id="stageAging"></div>
-          <p class="history-caveat" id="cycleCoverage"></p>
-        </section>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Длительность переходов</p><h3>Сколько занимает каждый участок сделки</h3></div><span>только завершённые переходы</span></div><div id="segmentCycles"></div></section>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Прогноз поступлений</p><h3>Взвешенный прогноз по поздним этапам</h3></div><span id="cashForecastCoverage">загрузка…</span></div><div id="cashForecast"></div></section>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Возраст этапов</p><h3>Сколько сделки лежат в каждой колонке</h3></div><span>производство не участвует в рекомендации</span></div><div id="stageAging"></div><p class="history-caveat" id="cycleCoverage"></p></section>
 
         <section class="panel sales-history-panel">
           <div class="panel-head"><div><p class="eyebrow">История работы продавца</p><h3>Движения сделок и выполненные задачи</h3></div><span id="salesHistoryUpdated">загрузка…</span></div>
@@ -83,7 +83,7 @@
         </section>
 
         <div class="sales-main-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ближайшие даты</p><h3>Следующие действия по сделкам</h3></div><span>из задач amoCRM</span></div><div id="upcomingSales"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Требует внимания</p><h3>Сделки без движения более 5 дней</h3></div><span id="attentionCount"></span></div><div id="salesAttention"></div></section></div>
-        <div class="sales-main-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">Открытая воронка</p><h3>Количество и сумма по этапам</h3></div><span id="salesUpdated"></span></div><div id="salesStages"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Последние изменения</p><h3>Недавно обновлённые сделки</h3></div></div><div id="recentLeads"></div></section></div>
+        <div class="sales-main-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">Текущее состояние</p><h3>Где открытые сделки находятся сейчас</h3></div><span id="salesUpdated"></span></div><div id="salesStages"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Последние изменения</p><h3>Недавно обновлённые сделки</h3></div></div><div id="recentLeads"></div></section></div>
         <section class="panel missing-sales-panel"><div class="panel-head"><div><p class="eyebrow">Качество контроля</p><h3>Каких данных не хватает для честной оценки продавца</h3></div><span>не подменяем неизвестное нулями</span></div><div id="salesMissingData" class="missing-grid"></div></section>
       </section>
 
@@ -97,5 +97,6 @@
   <script src="app.js"></script>
   <script src="sales-history.js"></script>
   <script src="sales-cycle.js"></script>
+  <script src="sales-flow.js"></script>
 </body>
 </html>
