@@ -20,7 +20,7 @@
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.6<br><span>циклы продаж</span></div>
+      <div class="sidebar-note">Прототип v0.7<br><span>здоровье продаж</span></div>
     </aside>
 
     <main>
@@ -43,10 +43,30 @@
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">План и показатели</p><h3>План → факт → прогноз месяца</h3></div><span id="salesPeriod"></span></div><div class="kpi-table" id="salesKpis"></div></section>
         <div class="sales-main-grid"><section class="panel pyramid-panel"><div class="panel-head"><div><p class="eyebrow">Пирамида метрик</p><h3>Где именно ломается воронка</h3></div><span>сверху — результат</span></div><div id="metricPyramid" class="metric-pyramid"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ответственный продавец</p><h3>Текущая нагрузка</h3></div><span>1 активный продавец</span></div><div id="managerPerformance"></div></section></div>
 
+        <section class="panel sales-health-panel">
+          <div class="panel-head"><div><p class="eyebrow">Здоровье отдела продаж</p><h3>Что работает и что исправить сегодня</h3></div><span id="healthUpdated">загрузка…</span></div>
+          <div class="sales-main-grid"><div id="salesHealth"></div><div><h3 class="subhead">Что сделать сегодня</h3><div id="todayActions"></div></div></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Конверсия воронки</p><h3>Переход между текущими этапами</h3></div><span>по входам в этапы текущего месяца</span></div>
+          <div id="funnelConversions"></div>
+        </section>
+
         <section class="panel cycle-command-panel">
           <div class="panel-head"><div><p class="eyebrow">Скорость воронки</p><h3>Цикл сделки и главный тормоз</h3></div><span id="cycleUpdated">загрузка…</span></div>
           <div class="cycle-summary-grid" id="cycleSummary"></div>
           <article class="bottleneck-card" id="bottleneckRecommendation"><strong>Считаю главный этап для ускорения…</strong></article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Длительность переходов</p><h3>Сколько занимает каждый участок сделки</h3></div><span>только завершённые переходы</span></div>
+          <div id="segmentCycles"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Прогноз поступлений</p><h3>Взвешенный прогноз по поздним этапам</h3></div><span id="cashForecastCoverage">загрузка…</span></div>
+          <div id="cashForecast"></div>
         </section>
 
         <section class="panel">
