@@ -6,6 +6,12 @@ const jsonHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-anix-sync-key',
 };
 const toIso = (value?: number | null) => value ? new Date(value * 1000).toISOString() : null;
+const resultText = (result: unknown) => {
+  if (!result) return null;
+  if (typeof result === 'string') return result;
+  if (Array.isArray(result)) return result.map((item: any) => item?.text || item?.value || '').filter(Boolean).join('; ') || null;
+  return (result as any)?.text || null;
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: jsonHeaders });
@@ -19,7 +25,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   let runId: number | null = null;
   try {
-    const { data: source, error: sourceError } = await supabase.from('data_sources').select('id').eq('slug', 'amocrm').single();
+    const { data: source, error: sourceError } = await supabase.from('data_sources').select('id,last_success_at').eq('slug', 'amocrm').single();
     if (sourceError) throw sourceError;
     const { data: run, error: runError } = await supabase.from('sync_runs').insert({ source_id: source.id }).select('id').single();
     if (runError) throw runError;
@@ -93,19 +99,61 @@ Deno.serve(async (req) => {
       const { error: upsertError } = await supabase.from('crm_leads').upsert(rows);
       if (upsertError) throw upsertError;
       recordsWritten += rows.length;
-      const events = leads.filter((l: any) => !old.has(l.id) || old.get(l.id)?.status_external_id !== l.status_id || old.get(l.id)?.pipeline_external_id !== l.pipeline_id).map((l: any) => ({ source_slug: 'amocrm', lead_external_id: l.id, pipeline_external_id: l.pipeline_id, status_external_id: l.status_id, observed_at: toIso(l.updated_at) || new Date().toISOString() }));
-      if (events.length) {
-        const { error } = await supabase.from('crm_lead_stage_events').insert(events);
+      const transitions = leads.filter((l: any) => !old.has(l.id) || old.get(l.id)?.status_external_id !== l.status_id || old.get(l.id)?.pipeline_external_id !== l.pipeline_id).map((l: any) => ({ source_slug: 'amocrm', lead_external_id: l.id, pipeline_external_id: l.pipeline_id, status_external_id: l.status_id, observed_at: toIso(l.updated_at) || new Date().toISOString() }));
+      if (transitions.length) {
+        const { error } = await supabase.from('crm_lead_stage_events').insert(transitions);
         if (error) throw new Error(`crm_lead_stage_events insert failed: ${error.message}`);
-        transitionsWritten += events.length;
+        transitionsWritten += transitions.length;
       }
       if (!body?._links?.next) break;
       page += 1;
     }
 
-    await supabase.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: recordsRead + usersRead + pipelineRows.length + statusRows.length, records_written: recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten }).eq('id', runId);
+    const fallbackFrom = Math.floor((Date.now() - 180 * 86400000) / 1000);
+    const incrementalFrom = source.last_success_at ? Math.floor((new Date(source.last_success_at).getTime() - 2 * 86400000) / 1000) : fallbackFrom;
+
+    let tasksPage = 1;
+    let tasksRead = 0;
+    while (tasksPage <= 100) {
+      const body = await api(`/api/v4/tasks?limit=250&page=${tasksPage}&filter[updated_at][from]=${incrementalFrom}&order[updated_at]=asc`);
+      const tasks = body?._embedded?.tasks || [];
+      if (!tasks.length) break;
+      tasksRead += tasks.length;
+      const rows = tasks.map((task: any) => ({
+        source_slug: 'amocrm', external_id: task.id, entity_external_id: task.entity_id || null, entity_type: task.entity_type || null,
+        responsible_user_external_id: task.responsible_user_id || null, created_by_external_id: task.created_by || null, updated_by_external_id: task.updated_by || null,
+        task_type_id: task.task_type_id || null, text: task.text || null, result_text: resultText(task.result), is_completed: Boolean(task.is_completed),
+        complete_till: toIso(task.complete_till), created_at_source: toIso(task.created_at), updated_at_source: toIso(task.updated_at), raw: task, synced_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from('crm_tasks').upsert(rows);
+      if (error) throw new Error(`crm_tasks upsert failed: ${error.message}. Apply migration 20260722_0004_crm_activity.sql in Supabase.`);
+      if (!body?._links?.next) break;
+      tasksPage += 1;
+    }
+
+    let eventsPage = 1;
+    let eventsRead = 0;
+    while (eventsPage <= 100) {
+      const body = await api(`/api/v4/events?limit=100&page=${eventsPage}&filter[created_at][from]=${incrementalFrom}&filter[entity][]=lead&filter[entity][]=task&with=lead_name`);
+      const events = body?._embedded?.events || [];
+      if (!events.length) break;
+      eventsRead += events.length;
+      const rows = events.map((event: any) => ({
+        source_slug: 'amocrm', external_id: String(event.id), event_type: event.type || 'unknown', entity_external_id: event.entity_id || null,
+        entity_type: event.entity_type || null, created_by_external_id: event.created_by || null, created_at_source: toIso(event.created_at) || new Date().toISOString(),
+        value_before: event.value_before || [], value_after: event.value_after || [], raw: event, synced_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from('crm_events').upsert(rows);
+      if (error) throw new Error(`crm_events upsert failed: ${error.message}. Apply migration 20260722_0004_crm_activity.sql in Supabase.`);
+      if (!body?._links?.next) break;
+      eventsPage += 1;
+    }
+
+    const totalRead = recordsRead + usersRead + pipelineRows.length + statusRows.length + tasksRead + eventsRead;
+    const totalWritten = recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten + tasksRead + eventsRead;
+    await supabase.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: totalRead, records_written: totalWritten }).eq('id', runId);
     await supabase.from('data_sources').update({ status: 'healthy', last_success_at: new Date().toISOString(), last_attempt_at: new Date().toISOString(), last_error: null }).eq('slug', 'amocrm');
-    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: statusRows.length, transitionsWritten }), { headers: jsonHeaders });
+    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: statusRows.length, transitionsWritten, tasksRead, eventsRead }), { headers: jsonHeaders });
   } catch (error) {
     if (runId) await supabase.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: String(error) }).eq('id', runId);
     await supabase.from('data_sources').update({ status: 'error', last_attempt_at: new Date().toISOString(), last_error: String(error) }).eq('slug', 'amocrm');
