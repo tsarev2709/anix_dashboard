@@ -1,12 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-anix-sync-key, apikey, content-type' };
+const jsonHeaders = {
+  'Content-Type': 'application/json; charset=utf-8',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-anix-sync-key, apikey, content-type',
+};
 const SOURCE = 'yougile';
-const BASE = 'https://yougile.com/api-v2';
+const DEFAULT_BASE = 'https://yougile.com/api-v2';
 
 const listFrom = (payload: any): any[] => {
   if (Array.isArray(payload)) return payload;
-  for (const key of ['content', 'data', 'items', 'result']) if (Array.isArray(payload?.[key])) return payload[key];
+  for (const key of ['content', 'data', 'items', 'result', 'values']) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+  }
   return [];
 };
 const idOf = (row: any) => String(row?.id || row?._id || '');
@@ -25,42 +31,79 @@ const assignedIds = (task: any): string[] => {
 };
 const deadlineOf = (task: any) => iso(task?.deadline?.deadline || task?.deadline?.date || task?.deadline || task?.dueDate);
 
-async function api(path: string, token: string) {
-  const response = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' } });
+async function api(base: string, path: string, token: string) {
+  const response = await fetch(`${base}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+  });
   const text = await response.text();
   let body: any = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-  if (!response.ok) throw new Error(`YouGile ${path}: HTTP ${response.status} ${typeof body === 'string' ? body.slice(0, 300) : JSON.stringify(body).slice(0, 300)}`);
+  if (!response.ok) {
+    throw new Error(`YouGile ${path}: HTTP ${response.status} ${typeof body === 'string' ? body.slice(0, 500) : JSON.stringify(body).slice(0, 500)}`);
+  }
   return body;
 }
 
-async function paged(path: string, token: string, extra = '') {
+async function paged(base: string, path: string, token: string) {
   const rows: any[] = [];
+  let firstPayload: any = null;
   for (let offset = 0; offset < 100000; offset += 100) {
     const separator = path.includes('?') ? '&' : '?';
-    const payload = await api(`${path}${separator}limit=100&offset=${offset}${extra}`, token);
+    const payload = await api(base, `${path}${separator}limit=100&offset=${offset}`, token);
+    if (offset === 0) firstPayload = payload;
     const batch = listFrom(payload);
     rows.push(...batch);
     if (batch.length < 100) break;
   }
-  return rows;
+  return { rows, firstPayload };
 }
 
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: jsonHeaders });
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const sourceWrite = async (status: string, extra: Record<string, any> = {}) => {
+    const { error } = await supabase.from('data_sources').upsert({
+      slug: SOURCE,
+      name: 'YouGile',
+      category: 'Производство',
+      connection_mode: 'edge',
+      status,
+      ...extra,
+    }, { onConflict: 'slug' });
+    if (error) throw new Error(`data_sources write failed: ${error.message}`);
+  };
+
   try {
     const expected = Deno.env.get('ANIX_SYNC_KEY');
-    if (expected && req.headers.get('x-anix-sync-key') !== expected) return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 401, headers: jsonHeaders });
+    if (expected && req.headers.get('x-anix-sync-key') !== expected) {
+      return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 401, headers: jsonHeaders });
+    }
     const token = Deno.env.get('YOUGILE_API_KEY');
     const companyId = Deno.env.get('YOUGILE_COMPANY_ID');
+    const base = (Deno.env.get('YOUGILE_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');
     if (!token || !companyId) throw new Error('YOUGILE_API_KEY or YOUGILE_COMPANY_ID is missing');
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
     const syncedAt = new Date().toISOString();
+    await sourceWrite('syncing', { last_error: null });
 
-    await supabase.from('data_sources').upsert({ slug: SOURCE, name: 'YouGile', category: 'Производство', connection_mode: 'edge', status: 'syncing', last_error: null }, { onConflict: 'slug' });
+    let userResult = await paged(base, '/users', token);
+    let projectResult = await paged(base, '/projects', token);
 
-    const users = await paged('/users', token);
-    const projects = await paged('/projects', token);
+    // Some YouGile installations require an explicit company filter even though the key is company-scoped.
+    if (!userResult.rows.length) userResult = await paged(base, `/users?companyId=${encodeURIComponent(companyId)}`, token);
+    if (!projectResult.rows.length) projectResult = await paged(base, `/projects?companyId=${encodeURIComponent(companyId)}`, token);
+
+    const users = userResult.rows;
+    const projects = projectResult.rows;
+    if (!projects.length) {
+      const preview = projectResult.firstPayload === null ? 'null' : JSON.stringify(projectResult.firstPayload).slice(0, 1000);
+      throw new Error(`YouGile returned 0 projects. companyId=${companyId}; base=${base}; response=${preview}`);
+    }
+
     const boards: any[] = [];
     const columns: any[] = [];
     const tasks: any[] = [];
@@ -68,20 +111,20 @@ Deno.serve(async req => {
     for (const project of projects) {
       const projectId = idOf(project);
       if (!projectId) continue;
-      const projectBoards = await paged(`/boards?projectId=${encodeURIComponent(projectId)}`, token);
+      const projectBoards = (await paged(base, `/boards?projectId=${encodeURIComponent(projectId)}`, token)).rows;
       for (const board of projectBoards) {
         board.__projectId = projectId;
         boards.push(board);
         const boardId = idOf(board);
         if (!boardId) continue;
-        const boardColumns = await paged(`/columns?boardId=${encodeURIComponent(boardId)}`, token);
+        const boardColumns = (await paged(base, `/columns?boardId=${encodeURIComponent(boardId)}`, token)).rows;
         for (const column of boardColumns) {
           column.__boardId = boardId;
           column.__projectId = projectId;
           columns.push(column);
           const columnId = idOf(column);
           if (!columnId) continue;
-          const columnTasks = await paged(`/tasks?columnId=${encodeURIComponent(columnId)}`, token);
+          const columnTasks = (await paged(base, `/tasks?columnId=${encodeURIComponent(columnId)}`, token)).rows;
           for (const task of columnTasks) {
             task.__columnId = columnId;
             task.__boardId = boardId;
@@ -117,13 +160,14 @@ Deno.serve(async req => {
       if (error) throw error;
     }
 
-    await supabase.from('data_sources').upsert({ slug: SOURCE, name: 'YouGile', category: 'Производство', connection_mode: 'edge', status: 'healthy', last_success_at: syncedAt, last_error: null }, { onConflict: 'slug' });
-    return new Response(JSON.stringify({ ok: true, company_id: companyId, synced_at: syncedAt, counts: { users: users.length, projects: projects.length, boards: boards.length, columns: columns.length, tasks: tasks.length, stage_events: stageEvents.length } }), { headers: jsonHeaders });
+    const counts = { users: users.length, projects: projects.length, boards: boards.length, columns: columns.length, tasks: tasks.length, stage_events: stageEvents.length };
+    await sourceWrite('healthy', { last_success_at: syncedAt, last_error: null });
+    return new Response(JSON.stringify({ ok: true, company_id: companyId, base_url: base, synced_at: syncedAt, counts }), { headers: jsonHeaders });
   } catch (error) {
-    try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-      await supabase.from('data_sources').upsert({ slug: SOURCE, name: 'YouGile', category: 'Производство', connection_mode: 'edge', status: 'error', last_error: String(error) }, { onConflict: 'slug' });
-    } catch {}
-    return new Response(JSON.stringify({ ok: false, error: String(error) }), { status: 500, headers: jsonHeaders });
+    const message = String(error);
+    try { await sourceWrite('error', { last_error: message }); } catch (sourceError) {
+      return new Response(JSON.stringify({ ok: false, error: message, source_status_error: String(sourceError) }), { status: 500, headers: jsonHeaders });
+    }
+    return new Response(JSON.stringify({ ok: false, error: message }), { status: 500, headers: jsonHeaders });
   }
 });
