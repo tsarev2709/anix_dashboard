@@ -18,7 +18,7 @@
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.3<br><span>amoCRM подключена</span></div>
+      <div class="sidebar-note">Прототип v0.4<br><span>управление продажами</span></div>
     </aside>
 
     <main>
@@ -42,12 +42,47 @@
       </section>
 
       <section id="sales" class="view">
-        <article class="panel source-intro"><div><p class="eyebrow">amoCRM</p><h2>Продажи</h2><p id="salesNotice">Загружаю реальные сделки и этапы…</p></div><button id="refreshSales">Обновить</button></article>
-        <div class="metric-grid" id="salesMetricGrid"></div>
-        <div class="two-col">
+        <article class="sales-command panel">
+          <div>
+            <p class="eyebrow">Отдел продаж · текущий месяц</p>
+            <h2 id="salesVerdict">Считаю выполнение плана…</h2>
+            <p id="salesNotice">Загружаю реальные сделки и этапы…</p>
+          </div>
+          <div class="command-score"><strong id="salesScore">—</strong><span>прогноз выполнения измеримых KPI</span><button id="refreshSales">Обновить</button></div>
+        </article>
+
+        <div class="sales-summary-grid" id="salesMetricGrid"></div>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">План и показатели</p><h3>План → факт → прогноз месяца</h3></div><span id="salesPeriod"></span></div>
+          <div class="kpi-table" id="salesKpis"></div>
+        </section>
+
+        <div class="sales-main-grid">
+          <section class="panel pyramid-panel">
+            <div class="panel-head"><div><p class="eyebrow">Пирамида метрик</p><h3>Где именно ломается воронка</h3></div><span>сверху — результат</span></div>
+            <div id="metricPyramid" class="metric-pyramid"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Ответственный продавец</p><h3>Текущая нагрузка</h3></div><span>1 активный продавец</span></div>
+            <div id="managerPerformance"></div>
+          </section>
+        </div>
+
+        <div class="sales-main-grid">
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Ближайшие даты</p><h3>Следующие действия по сделкам</h3></div><span>из задач amoCRM</span></div><div id="upcomingSales"></div></section>
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Требует внимания</p><h3>Сделки без движения более 5 дней</h3></div><span id="attentionCount"></span></div><div id="salesAttention"></div></section>
+        </div>
+
+        <div class="sales-main-grid">
           <section class="panel"><div class="panel-head"><div><p class="eyebrow">Открытая воронка</p><h3>Количество и сумма по этапам</h3></div><span id="salesUpdated"></span></div><div id="salesStages"></div></section>
           <section class="panel"><div class="panel-head"><div><p class="eyebrow">Последние изменения</p><h3>Недавно обновлённые сделки</h3></div></div><div id="recentLeads"></div></section>
         </div>
+
+        <section class="panel missing-sales-panel">
+          <div class="panel-head"><div><p class="eyebrow">Качество контроля</p><h3>Каких данных не хватает для честной оценки продавца</h3></div><span>не подменяем неизвестное нулями</span></div>
+          <div id="salesMissingData" class="missing-grid"></div>
+        </section>
       </section>
 
       <section id="production" class="view"><div class="section-placeholder"><h2>Производство</h2><p>Сюда подключается YouGile: задачи, этапы проекта, сроки, задержки, правки и загрузка команды.</p></div></section>
