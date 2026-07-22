@@ -45,11 +45,11 @@ const money = value => new Intl.NumberFormat('ru-RU', { style: 'currency', curre
 const number = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(value || 0));
 const dateTime = value => value ? new Date(value).toLocaleString('ru-RU') : '—';
 const shortDate = value => value ? new Date(value).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—';
-const pct = value => `${Math.round(Number(value || 0) * 100)}%`;
+const pct = value => value === null || value === undefined ? '—' : `${Math.round(Number(value || 0) * 100)}%`;
 const kpiValue = item => item.isMoney ? money(item.fact) : item.fact === null ? 'нет данных' : number(item.fact);
 const forecastValue = item => item.isMoney ? money(item.forecast) : item.forecast === null ? '—' : number(item.forecast);
 const planValue = item => item.isMoney ? money(item.plan) : `${number(item.plan)} ${item.unit || ''}`.trim();
-const stageLabel = item => item.pipeline_name ? `${item.pipeline_name} → ${item.status_name || item.name}` : (item.status_name || item.name || 'Этап не определён');
+const stageLabel = item => item.pipeline_name ? `${item.pipeline_name} → ${item.status_name || item.name || 'Этап'}` : (item.status_name || item.name || 'Этап не определён');
 
 function renderOverview() {
   qs('#statusGrid').innerHTML = snapshot.statuses.map(item => `<article class="status-card"><div class="status-row"><strong>${esc(item.name)}</strong><span class="dot ${item.status}"></span></div><small>${esc(item.note)}</small></article>`).join('');
@@ -101,8 +101,16 @@ function renderKpis(kpis) {
   qs('#salesKpis').innerHTML = kpis.map(item => {
     const completion = item.completion === null ? null : Math.min(1.25, item.completion);
     const matched = item.matched_statuses?.map(status => status.pipeline_name ? `${status.pipeline_name} → ${status.name}` : status.name).join(', ');
+    let sourceNote = 'источник данных не подключён';
+    if (item.source === 'tasks') {
+      sourceNote = item.key === 'touches'
+        ? `по выполненным задачам: ${number(item.task_breakdown?.first_touches || 0)} первых касаний + ${number(item.task_breakdown?.follow_ups || 0)} follow-up`
+        : `по выполненным задачам звонков / встреч: ${number(item.task_breakdown?.calls || 0)}`;
+    } else if (item.measurable) {
+      sourceNote = matched ? `по этапам amoCRM: ${matched}` : 'подходящий этап в amoCRM пока не найден — KPI не включён в общий прогноз';
+    }
     return `<div class="kpi-row ${item.status}">
-      <div class="kpi-name"><strong>${esc(item.label)}</strong><small>${item.measurable ? (matched ? `по этапам amoCRM: ${esc(matched)}` : 'подходящий этап в amoCRM пока не найден') : 'источник данных не подключён'}</small></div>
+      <div class="kpi-name"><strong>${esc(item.label)}</strong><small>${esc(sourceNote)}</small></div>
       <div><small>План</small><strong>${planValue(item)}</strong></div>
       <div><small>Факт</small><strong>${kpiValue(item)}</strong></div>
       <div><small>Прогноз</small><strong>${forecastValue(item)}</strong></div>
@@ -125,30 +133,31 @@ function renderManager(managers, summary) {
   const initial = String(manager.name || 'П').trim().charAt(0).toUpperCase();
   qs('#managerPerformance').innerHTML = `<article class="manager-card">
     <div class="manager-avatar">${esc(initial)}</div>
-    <div><p class="eyebrow">Основной активный продавец</p><h3>${esc(manager.name)}</h3><p class="manager-note">${manager.email ? esc(manager.email) : 'Пользователь amoCRM'}${manager.is_admin ? ' · администратор' : ''}. Основным считаем пользователя с наибольшим числом новых сделок месяца.</p></div>
+    <div><p class="eyebrow">Основной активный продавец</p><h3>${esc(manager.name)}</h3><p class="manager-note">${manager.email ? esc(manager.email) : 'Пользователь amoCRM'}${manager.is_admin ? ' · администратор' : ''}. Основным считаем пользователя с наибольшим числом выполненных действий месяца.</p></div>
   </article>
   <div class="manager-stats">
-    <div><small>Новых сделок месяца</small><strong>${number(manager.created_month)}</strong></div>
+    <div><small>Выполнено задач месяца</small><strong>${number(manager.completed_tasks_month)}</strong></div>
+    <div><small>Новых сделок по событиям</small><strong>${number(manager.created_month)}</strong></div>
     <div><small>Открыто в работе</small><strong>${number(manager.open)}</strong></div>
-    <div><small>Сумма воронки</small><strong>${money(manager.pipeline_value)}</strong></div>
     <div><small>Доля открытых сделок</small><strong>${summary.open_leads ? pct(manager.open / summary.open_leads) : '—'}</strong></div>
   </div>`;
 }
 
 function renderSales(payload) {
   const { summary, stages, recent, source, generated_at, period, kpis, managers, attention, upcoming, missing_data } = payload;
-  const score = summary.overall_forecast || 0;
-  const scoreClass = score >= 1 ? 'green' : score >= .8 ? 'yellow' : score >= .6 ? 'orange' : 'red';
+  const score = summary.overall_forecast;
+  const scoreClass = score === null ? 'neutral' : score >= 1 ? 'green' : score >= .8 ? 'yellow' : score >= .6 ? 'orange' : 'red';
   qs('#salesScore').textContent = pct(score);
   qs('#salesScore').className = scoreClass;
-  qs('#salesVerdict').textContent = score >= 1 ? 'По измеримым KPI отдел идёт к выполнению плана' : score >= .8 ? 'План достижим, но есть показатели риска' : score >= .6 ? 'Темп ниже плана — нужна коррекция воронки' : 'По измеримым этапам план месяца под угрозой';
+  qs('#salesVerdict').textContent = score === null ? 'Для прогноза пока недостаточно измеримых KPI' : score >= 1 ? 'По измеримым KPI отдел идёт к выполнению плана' : score >= .8 ? 'План достижим, но есть показатели риска' : score >= .6 ? 'Темп ниже плана — нужна коррекция воронки' : 'По измеримым этапам план месяца под угрозой';
   qs('#salesPeriod').textContent = `${period.elapsed_days} из ${period.days_in_month} дней месяца`;
 
+  const budgetKnown = summary.priced_open_leads > 0;
   qs('#salesMetricGrid').innerHTML = [
-    { label: 'Прогноз KPI', value: pct(score), note: 'среднее по измеримым этапам', tone: scoreClass },
-    { label: 'Новых сделок', value: number(summary.new_leads_month), note: 'создано в текущем месяце', tone: 'neutral' },
+    { label: 'Прогноз KPI', value: pct(score), note: score === null ? 'недостаточно измеримых данных' : 'среднее по реально измеримым KPI', tone: scoreClass },
+    { label: 'Новых сделок', value: number(summary.new_leads_month), note: `${number(summary.imported_or_created_month)} создано или импортировано в amoCRM`, tone: 'neutral' },
     { label: 'Открытых сделок', value: number(summary.open_leads), note: `${number(summary.total_leads)} всего в базе`, tone: 'neutral' },
-    { label: 'Объём воронки', value: money(summary.pipeline_value), note: `средний чек ${money(summary.average_open_check)}`, tone: 'neutral' }
+    { label: 'Объём воронки', value: budgetKnown ? money(summary.pipeline_value) : '—', note: budgetKnown ? `бюджет заполнен у ${number(summary.priced_open_leads)} сделок · средний чек ${money(summary.average_open_check)}` : 'бюджеты открытых сделок не заполнены', tone: 'neutral' }
   ].map(item => `<article class="sales-summary-card ${item.tone}"><small>${item.label}</small><strong>${item.value}</strong><span>${item.note}</span></article>`).join('');
 
   renderKpis(kpis);
@@ -158,19 +167,19 @@ function renderSales(payload) {
   qs('#upcomingSales').innerHTML = upcoming.length ? upcoming.map(item => `<div class="sales-list-row"><div class="date-chip"><strong>${shortDate(item.at)}</strong><small>${new Date(item.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></div><div><strong>${esc(item.name)}</strong><small>${esc(stageLabel(item))} · ${esc(item.responsible_user_name)}</small></div></div>`).join('') : '<div class="empty-state"><strong>Ближайшие задачи не видны</strong><p>В синхронизированных сделках нет поля ближайшей задачи. Это важный пробел дисциплины продаж.</p></div>';
 
   qs('#attentionCount').textContent = `${attention.length} показано`;
-  qs('#salesAttention').innerHTML = attention.length ? attention.map(lead => `<div class="attention-row"><div><strong>${esc(lead.name)}</strong><small>${esc(stageLabel(lead))} · ${esc(lead.responsible_user_name)}</small></div><div><strong>${lead.stale_days} дн.</strong><small>без обновления</small></div><span>${money(lead.price)}</span></div>`).join('') : '<p class="empty-state">Сделок без движения более пяти дней нет.</p>';
+  qs('#salesAttention').innerHTML = attention.length ? attention.map(lead => `<div class="attention-row"><div><strong>${esc(lead.name)}</strong><small>${esc(stageLabel(lead))} · ${esc(lead.responsible_user_name)}</small></div><div><strong>${lead.stale_days} дн.</strong><small>без обновления</small></div><span>${lead.price > 0 ? money(lead.price) : 'бюджет не указан'}</span></div>`).join('') : '<p class="empty-state">Сделок без движения более пяти дней нет.</p>';
 
   const maxCount = Math.max(1, ...stages.map(stage => stage.count));
-  qs('#salesStages').innerHTML = stages.length ? stages.map(stage => `<div class="funnel-row sales-funnel"><strong>${esc(stage.pipeline_name ? `${stage.pipeline_name} → ${stage.name}` : stage.name)}</strong><div class="bar"><i style="width:${Math.max(5, stage.count / maxCount * 100)}%"></i></div><span>${number(stage.count)}<small> · ${money(stage.value)}</small></span></div>`).join('') : '<p>Открытых сделок нет.</p>';
-  qs('#recentLeads').innerHTML = recent.length ? recent.map(lead => `<div class="recent-row"><div><strong>${esc(lead.name || `Сделка #${lead.external_id}`)}</strong><small>${esc(stageLabel(lead))} · ${esc(lead.responsible_user_name)} · ${dateTime(lead.updated_at_source)}</small></div><span>${money(lead.price)}</span></div>`).join('') : '<p>Сделок пока нет.</p>';
+  qs('#salesStages').innerHTML = stages.length ? stages.map(stage => `<div class="funnel-row sales-funnel"><strong>${esc(stage.pipeline_name ? `${stage.pipeline_name} → ${stage.name}` : stage.name)}</strong><div class="bar"><i style="width:${Math.max(5, stage.count / maxCount * 100)}%"></i></div><span>${number(stage.count)}<small>${stage.priced_count ? ` · ${money(stage.value)}` : ' · бюджеты не указаны'}</small></span></div>`).join('') : '<p>Открытых сделок нет.</p>';
+  qs('#recentLeads').innerHTML = recent.length ? recent.map(lead => `<div class="recent-row"><div><strong>${esc(lead.name || `Сделка #${lead.external_id}`)}</strong><small>${esc(stageLabel(lead))} · ${esc(lead.responsible_user_name)} · ${dateTime(lead.updated_at_source)}</small></div><span>${lead.price > 0 ? money(lead.price) : '—'}</span></div>`).join('') : '<p>Сделок пока нет.</p>';
 
   qs('#salesMissingData').innerHTML = missing_data.map(item => `<article class="missing-card priority-${item.priority}"><strong>${esc(item.metric)}</strong><p>${esc(item.reason)}</p></article>`).join('');
   qs('#salesUpdated').textContent = source?.last_success_at ? `синхронизация ${dateTime(source.last_success_at)}` : `срез ${dateTime(generated_at)}`;
   qs('#overviewSalesUpdated').textContent = source?.last_success_at ? dateTime(source.last_success_at) : 'amoCRM';
-  qs('#salesNotice').textContent = 'Названия воронок, этапов и ответственных отображаются точно так, как заведены в amoCRM. KPI сопоставляются с этими этапами по смыслу.';
+  qs('#salesNotice').textContent = 'Импортированная база отделена от фактических действий продавца. Касания и звонки считаются по выполненным задачам, этапные KPI — по реальным переходам в amoCRM.';
 
-  snapshot.metrics[0] = { label: 'Открытых сделок', value: String(summary.open_leads), delta: `${summary.new_leads_month} новых в месяце`, direction: 'up' };
-  snapshot.metrics[1] = { label: 'Объём воронки', value: money(summary.pipeline_value), delta: `прогноз KPI ${pct(score)}`, direction: score >= .8 ? 'up' : 'down' };
+  snapshot.metrics[0] = { label: 'Открытых сделок', value: String(summary.open_leads), delta: `${summary.completed_tasks_month} выполненных задач в месяце`, direction: 'up' };
+  snapshot.metrics[1] = { label: 'Объём воронки', value: budgetKnown ? money(summary.pipeline_value) : 'нет данных', delta: budgetKnown ? `прогноз KPI ${pct(score)}` : 'бюджеты сделок не заполнены', direction: score !== null && score >= .8 ? 'up' : 'down' };
   snapshot.funnel = stages.map(stage => ({ label: stage.pipeline_name ? `${stage.pipeline_name} → ${stage.name}` : stage.name, value: stage.count }));
   snapshot.sales = payload;
   renderOverview();
