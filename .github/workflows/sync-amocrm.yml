@@ -1,11 +1,13 @@
 name: Sync amoCRM
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - pages-build-deployment
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - '.github/workflows/sync-amocrm.yml'
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
@@ -19,11 +21,24 @@ concurrency:
 
 jobs:
   sync:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       ANIX_SYNC_KEY: ${{ secrets.ANIX_SYNC_KEY }}
     steps:
+      - name: Show trigger context
+        shell: bash
+        run: |
+          echo "Trigger: $GITHUB_EVENT_NAME"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            echo "Deployment workflow: ${{ github.event.workflow_run.name }}"
+            echo "Deployment conclusion: ${{ github.event.workflow_run.conclusion }}"
+            echo "Deployment commit: ${{ github.event.workflow_run.head_sha }}"
+          fi
+
       - name: Validate required secrets
         shell: bash
         run: |
@@ -34,7 +49,14 @@ jobs:
         shell: bash
         run: |
           tmp_file=$(mktemp)
+          trap 'rm -f "$tmp_file"' EXIT
+
           http_code=$(curl --silent --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            --connect-timeout 20 \
+            --max-time 300 \
             --output "$tmp_file" \
             --write-out "%{http_code}" \
             -H "x-anix-sync-key: $ANIX_SYNC_KEY" \
