@@ -6,6 +6,7 @@
   <title>Anix — операционная панель</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="sales-activity.css" />
+  <link rel="stylesheet" href="sales-cycle.css" />
 </head>
 <body>
   <div class="shell">
@@ -19,7 +20,7 @@
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.5<br><span>история продаж</span></div>
+      <div class="sidebar-note">Прототип v0.6<br><span>циклы продаж</span></div>
     </aside>
 
     <main>
@@ -42,6 +43,18 @@
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">План и показатели</p><h3>План → факт → прогноз месяца</h3></div><span id="salesPeriod"></span></div><div class="kpi-table" id="salesKpis"></div></section>
         <div class="sales-main-grid"><section class="panel pyramid-panel"><div class="panel-head"><div><p class="eyebrow">Пирамида метрик</p><h3>Где именно ломается воронка</h3></div><span>сверху — результат</span></div><div id="metricPyramid" class="metric-pyramid"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ответственный продавец</p><h3>Текущая нагрузка</h3></div><span>1 активный продавец</span></div><div id="managerPerformance"></div></section></div>
 
+        <section class="panel cycle-command-panel">
+          <div class="panel-head"><div><p class="eyebrow">Скорость воронки</p><h3>Цикл сделки и главный тормоз</h3></div><span id="cycleUpdated">загрузка…</span></div>
+          <div class="cycle-summary-grid" id="cycleSummary"></div>
+          <article class="bottleneck-card" id="bottleneckRecommendation"><strong>Считаю главный этап для ускорения…</strong></article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><p class="eyebrow">Возраст этапов</p><h3>Сколько сделки лежат в каждой колонке</h3></div><span>производство не участвует в рекомендации</span></div>
+          <div id="stageAging"></div>
+          <p class="history-caveat" id="cycleCoverage"></p>
+        </section>
+
         <section class="panel sales-history-panel">
           <div class="panel-head"><div><p class="eyebrow">История работы продавца</p><h3>Движения сделок и выполненные задачи</h3></div><span id="salesHistoryUpdated">загрузка…</span></div>
           <div id="salesActivitySummary" class="sales-summary-grid"></div>
@@ -63,5 +76,6 @@
   <script src="runtime-config.js"></script>
   <script src="app.js"></script>
   <script src="sales-history.js"></script>
+  <script src="sales-cycle.js"></script>
 </body>
 </html>
