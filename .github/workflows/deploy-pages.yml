@@ -30,12 +30,18 @@ jobs:
           test -f styles.css
           test -f app.js
           test -f runtime-config.js
+          test -f sales-activity.css
+          test -f sales-cycle.css
+          test -f sales-history.js
+          test -f sales-cycle.js
+          test -f sales-flow.js
+          test -f diagnostics.js
 
       - name: Build static site directory
         run: |
           rm -rf dist
           mkdir -p dist
-          cp index.html styles.css app.js runtime-config.js dist/
+          find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.png' -o -name '*.ico' \) -exec cp {} dist/ \;
           touch dist/.nojekyll
 
       - name: Validate generated files
@@ -44,6 +50,12 @@ jobs:
           test -s dist/styles.css
           test -s dist/app.js
           test -s dist/runtime-config.js
+          test -s dist/sales-activity.css
+          test -s dist/sales-cycle.css
+          test -s dist/sales-history.js
+          test -s dist/sales-cycle.js
+          test -s dist/sales-flow.js
+          test -s dist/diagnostics.js
 
       - name: Upload preview artifact
         uses: actions/upload-artifact@v4
@@ -65,7 +77,7 @@ jobs:
         run: |
           rm -rf dist
           mkdir -p dist
-          cp index.html styles.css app.js runtime-config.js dist/
+          find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.png' -o -name '*.ico' \) -exec cp {} dist/ \;
           touch dist/.nojekyll
 
       - name: Deploy to gh-pages branch
