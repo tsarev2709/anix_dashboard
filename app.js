@@ -49,6 +49,7 @@ const pct = value => `${Math.round(Number(value || 0) * 100)}%`;
 const kpiValue = item => item.isMoney ? money(item.fact) : item.fact === null ? 'нет данных' : number(item.fact);
 const forecastValue = item => item.isMoney ? money(item.forecast) : item.forecast === null ? '—' : number(item.forecast);
 const planValue = item => item.isMoney ? money(item.plan) : `${number(item.plan)} ${item.unit || ''}`.trim();
+const stageLabel = item => item.pipeline_name ? `${item.pipeline_name} → ${item.status_name || item.name}` : (item.status_name || item.name || 'Этап не определён');
 
 function renderOverview() {
   qs('#statusGrid').innerHTML = snapshot.statuses.map(item => `<article class="status-card"><div class="status-row"><strong>${esc(item.name)}</strong><span class="dot ${item.status}"></span></div><small>${esc(item.note)}</small></article>`).join('');
@@ -99,8 +100,9 @@ async function loadSources() {
 function renderKpis(kpis) {
   qs('#salesKpis').innerHTML = kpis.map(item => {
     const completion = item.completion === null ? null : Math.min(1.25, item.completion);
+    const matched = item.matched_statuses?.map(status => status.pipeline_name ? `${status.pipeline_name} → ${status.name}` : status.name).join(', ');
     return `<div class="kpi-row ${item.status}">
-      <div class="kpi-name"><strong>${esc(item.label)}</strong><small>${item.measurable ? (item.matched_statuses?.length ? `по этапам: ${esc(item.matched_statuses.join(', '))}` : 'этап в amoCRM пока не найден') : 'источник данных не подключён'}</small></div>
+      <div class="kpi-name"><strong>${esc(item.label)}</strong><small>${item.measurable ? (matched ? `по этапам amoCRM: ${esc(matched)}` : 'подходящий этап в amoCRM пока не найден') : 'источник данных не подключён'}</small></div>
       <div><small>План</small><strong>${planValue(item)}</strong></div>
       <div><small>Факт</small><strong>${kpiValue(item)}</strong></div>
       <div><small>Прогноз</small><strong>${forecastValue(item)}</strong></div>
@@ -113,19 +115,17 @@ function renderPyramid(kpis) {
   const reversed = [...kpis].reverse();
   qs('#metricPyramid').innerHTML = reversed.map((item, index) => {
     const width = 52 + index * (46 / Math.max(1, reversed.length - 1));
-    return `<div class="pyramid-step ${item.status}" style="width:${width}%">
-      <div><strong>${esc(item.label)}</strong><small>${item.measurable ? `${kpiValue(item)} из ${planValue(item)}` : 'данных пока нет'}</small></div>
-      <span>${item.completion === null ? '—' : pct(item.completion)}</span>
-    </div>`;
+    return `<div class="pyramid-step ${item.status}" style="width:${width}%"><div><strong>${esc(item.label)}</strong><small>${item.measurable ? `${kpiValue(item)} из ${planValue(item)}` : 'данных пока нет'}</small></div><span>${item.completion === null ? '—' : pct(item.completion)}</span></div>`;
   }).join('');
 }
 
 function renderManager(managers, summary) {
   const manager = managers[0];
   if (!manager) { qs('#managerPerformance').innerHTML = '<p class="empty-state">Ответственный пользователь в сделках не определён.</p>'; return; }
+  const initial = String(manager.name || 'П').trim().charAt(0).toUpperCase();
   qs('#managerPerformance').innerHTML = `<article class="manager-card">
-    <div class="manager-avatar">П</div>
-    <div><p class="eyebrow">Основной активный пользователь</p><h3>Продавец amoCRM #${manager.id}</h3><p class="manager-note">Имя появится после синхронизации справочника пользователей. Сейчас оцениваем пользователя с наибольшим числом новых сделок месяца.</p></div>
+    <div class="manager-avatar">${esc(initial)}</div>
+    <div><p class="eyebrow">Основной активный продавец</p><h3>${esc(manager.name)}</h3><p class="manager-note">${manager.email ? esc(manager.email) : 'Пользователь amoCRM'}${manager.is_admin ? ' · администратор' : ''}. Основным считаем пользователя с наибольшим числом новых сделок месяца.</p></div>
   </article>
   <div class="manager-stats">
     <div><small>Новых сделок месяца</small><strong>${number(manager.created_month)}</strong></div>
@@ -155,23 +155,23 @@ function renderSales(payload) {
   renderPyramid(kpis);
   renderManager(managers, summary);
 
-  qs('#upcomingSales').innerHTML = upcoming.length ? upcoming.map(item => `<div class="sales-list-row"><div class="date-chip"><strong>${shortDate(item.at)}</strong><small>${new Date(item.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></div><div><strong>${esc(item.name)}</strong><small>${esc(item.status_name || 'Этап не определён')} · продавец #${esc(item.responsible_user_external_id || '—')}</small></div></div>`).join('') : '<div class="empty-state"><strong>Ближайшие задачи не видны</strong><p>В синхронизированных сделках нет поля ближайшей задачи. Это важный пробел дисциплины продаж.</p></div>';
+  qs('#upcomingSales').innerHTML = upcoming.length ? upcoming.map(item => `<div class="sales-list-row"><div class="date-chip"><strong>${shortDate(item.at)}</strong><small>${new Date(item.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</small></div><div><strong>${esc(item.name)}</strong><small>${esc(stageLabel(item))} · ${esc(item.responsible_user_name)}</small></div></div>`).join('') : '<div class="empty-state"><strong>Ближайшие задачи не видны</strong><p>В синхронизированных сделках нет поля ближайшей задачи. Это важный пробел дисциплины продаж.</p></div>';
 
   qs('#attentionCount').textContent = `${attention.length} показано`;
-  qs('#salesAttention').innerHTML = attention.length ? attention.map(lead => `<div class="attention-row"><div><strong>${esc(lead.name)}</strong><small>${esc(lead.status_name || 'Этап не определён')} · продавец #${esc(lead.responsible_user_external_id || '—')}</small></div><div><strong>${lead.stale_days} дн.</strong><small>без обновления</small></div><span>${money(lead.price)}</span></div>`).join('') : '<p class="empty-state">Сделок без движения более пяти дней нет.</p>';
+  qs('#salesAttention').innerHTML = attention.length ? attention.map(lead => `<div class="attention-row"><div><strong>${esc(lead.name)}</strong><small>${esc(stageLabel(lead))} · ${esc(lead.responsible_user_name)}</small></div><div><strong>${lead.stale_days} дн.</strong><small>без обновления</small></div><span>${money(lead.price)}</span></div>`).join('') : '<p class="empty-state">Сделок без движения более пяти дней нет.</p>';
 
   const maxCount = Math.max(1, ...stages.map(stage => stage.count));
-  qs('#salesStages').innerHTML = stages.length ? stages.map(stage => `<div class="funnel-row sales-funnel"><strong>${esc(stage.name)}</strong><div class="bar"><i style="width:${Math.max(5, stage.count / maxCount * 100)}%"></i></div><span>${number(stage.count)}<small> · ${money(stage.value)}</small></span></div>`).join('') : '<p>Открытых сделок нет.</p>';
-  qs('#recentLeads').innerHTML = recent.length ? recent.map(lead => `<div class="recent-row"><div><strong>${esc(lead.name || `Сделка #${lead.external_id}`)}</strong><small>${esc(lead.status_name || 'Этап не определён')} · ${dateTime(lead.updated_at_source)}</small></div><span>${money(lead.price)}</span></div>`).join('') : '<p>Сделок пока нет.</p>';
+  qs('#salesStages').innerHTML = stages.length ? stages.map(stage => `<div class="funnel-row sales-funnel"><strong>${esc(stage.pipeline_name ? `${stage.pipeline_name} → ${stage.name}` : stage.name)}</strong><div class="bar"><i style="width:${Math.max(5, stage.count / maxCount * 100)}%"></i></div><span>${number(stage.count)}<small> · ${money(stage.value)}</small></span></div>`).join('') : '<p>Открытых сделок нет.</p>';
+  qs('#recentLeads').innerHTML = recent.length ? recent.map(lead => `<div class="recent-row"><div><strong>${esc(lead.name || `Сделка #${lead.external_id}`)}</strong><small>${esc(stageLabel(lead))} · ${esc(lead.responsible_user_name)} · ${dateTime(lead.updated_at_source)}</small></div><span>${money(lead.price)}</span></div>`).join('') : '<p>Сделок пока нет.</p>';
 
   qs('#salesMissingData').innerHTML = missing_data.map(item => `<article class="missing-card priority-${item.priority}"><strong>${esc(item.metric)}</strong><p>${esc(item.reason)}</p></article>`).join('');
   qs('#salesUpdated').textContent = source?.last_success_at ? `синхронизация ${dateTime(source.last_success_at)}` : `срез ${dateTime(generated_at)}`;
   qs('#overviewSalesUpdated').textContent = source?.last_success_at ? dateTime(source.last_success_at) : 'amoCRM';
-  qs('#salesNotice').textContent = `План: 1 000 касаний → 250 переписок → 25 звонков → 10 SQL → 5 КП → 3 договора/счёта → 2 предоплаты → 1 млн ₽. Неизмеримые показатели показаны как пробелы, а не как нули.`;
+  qs('#salesNotice').textContent = 'Названия воронок, этапов и ответственных отображаются точно так, как заведены в amoCRM. KPI сопоставляются с этими этапами по смыслу.';
 
   snapshot.metrics[0] = { label: 'Открытых сделок', value: String(summary.open_leads), delta: `${summary.new_leads_month} новых в месяце`, direction: 'up' };
   snapshot.metrics[1] = { label: 'Объём воронки', value: money(summary.pipeline_value), delta: `прогноз KPI ${pct(score)}`, direction: score >= .8 ? 'up' : 'down' };
-  snapshot.funnel = stages.map(stage => ({ label: stage.name, value: stage.count }));
+  snapshot.funnel = stages.map(stage => ({ label: stage.pipeline_name ? `${stage.pipeline_name} → ${stage.name}` : stage.name, value: stage.count }));
   snapshot.sales = payload;
   renderOverview();
 }
