@@ -3,6 +3,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type' };
 const DAY = 86400000;
 const text = (v: unknown) => String(v || '').toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
+const median = (values: number[]) => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
 
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers });
@@ -67,21 +73,39 @@ Deno.serve(async req => {
       if (!eventByTask.has(event.task_external_id)) eventByTask.set(event.task_external_id, []);
       eventByTask.get(event.task_external_id)!.push(event);
     }
-    const agesByColumn = new Map<string, number[]>();
+
+    const agesByColumn = new Map<string, { ages: number[]; exact: number; overdue: number }>();
     for (const task of activeTasks) {
       const history = eventByTask.get(task.external_id) || [];
       const entries = history.filter((e: any) => e.column_external_id === task.column_external_id);
-      const entered = entries.length ? new Date(entries[entries.length - 1].observed_at) : new Date(task.updated_at_source || task.synced_at || now);
+      const exact = entries.length > 0;
+      const entered = exact ? new Date(entries[entries.length - 1].observed_at) : new Date(task.updated_at_source || task.synced_at || now);
       const age = Math.max(0, (now.getTime() - entered.getTime()) / DAY);
       const id = String(task.column_external_id || 'none');
-      if (!agesByColumn.has(id)) agesByColumn.set(id, []);
-      agesByColumn.get(id)!.push(age);
+      const row = agesByColumn.get(id) || { ages: [], exact: 0, overdue: 0 };
+      row.ages.push(age);
+      if (exact) row.exact += 1;
+      if (task.deadline_at && new Date(task.deadline_at) < now) row.overdue += 1;
+      agesByColumn.set(id, row);
     }
-    const bottlenecks = [...agesByColumn.entries()].map(([id, values]) => ({ column_external_id: id, column_name: columnMap.get(id)?.title || 'Без колонки', count: values.length, average_days: values.reduce((a, b) => a + b, 0) / values.length, max_days: Math.max(...values) })).filter(x => !/готов|архив|заверш/.test(text(x.column_name))).sort((a, b) => b.average_days - a.average_days);
+
+    const excludedColumn = (name: string) => /нов(ые|ая)? задач|входящ|бэклог|backlog|готов|сделано|заверш|архив|отмен|корзин/.test(text(name));
+    const bottlenecks = [...agesByColumn.entries()].map(([id, stats]) => {
+      const columnName = columnMap.get(id)?.title || 'Без колонки';
+      const avg = stats.ages.reduce((a, b) => a + b, 0) / stats.ages.length;
+      const med = median(stats.ages) || 0;
+      const max = Math.max(...stats.ages);
+      const historyCoverage = stats.ages.length ? stats.exact / stats.ages.length : 0;
+      const score = avg * 0.45 + med * 0.25 + max * 0.1 + stats.overdue * 2.5 + Math.min(stats.ages.length, 10) * 0.15;
+      return { column_external_id: id, column_name: columnName, count: stats.ages.length, average_days: avg, median_days: med, max_days: max, overdue: stats.overdue, exact_count: stats.exact, history_coverage: historyCoverage, score };
+    }).filter(x => !excludedColumn(x.column_name) && x.count >= 1 && x.history_coverage >= 0.5 && (x.average_days >= 0.5 || x.overdue > 0 || x.max_days >= 1)).sort((a, b) => b.score - a.score || b.average_days - a.average_days);
+
+    const bottleneck = bottlenecks[0] || null;
+    const bottleneckState = bottleneck ? 'ready' : (events || []).length < activeTasks.length ? 'collecting_history' : 'no_material_bottleneck';
 
     const attention = [...overdue].sort((a: any, b: any) => new Date(a.deadline_at).getTime() - new Date(b.deadline_at).getTime()).slice(0, 12).map((task: any) => ({ external_id: task.external_id, title: task.title, project_name: projectMap.get(task.project_external_id)?.title || null, board_name: boardMap.get(task.board_external_id)?.title || null, column_name: columnMap.get(task.column_external_id)?.title || null, deadline_at: task.deadline_at, overdue_days: Math.ceil((now.getTime() - new Date(task.deadline_at).getTime()) / DAY), assignees: (task.assigned_user_external_ids || []).map((id: string) => userMap.get(id)?.name || userMap.get(id)?.email || id) }));
 
-    return new Response(JSON.stringify({ ok: true, generated_at: now.toISOString(), source, summary: { projects: (projects || []).filter((x: any) => !x.is_archived).length, active_tasks: activeTasks.length, overdue: overdue.length, due_week: dueWeek.length, without_deadline: withoutDeadline.length, without_assignee: withoutAssignee.length }, projects: [...projectGroups.values()].sort((a, b) => b.overdue - a.overdue || b.active_tasks - a.active_tasks), stages: [...stageGroups.values()].sort((a, b) => b.count - a.count), people: [...people.values()].map((x: any) => ({ ...x, projects: x.projects.size })).sort((a, b) => b.overdue - a.overdue || b.active_tasks - a.active_tasks), bottleneck: bottlenecks[0] || null, bottlenecks, attention }), { headers });
+    return new Response(JSON.stringify({ ok: true, generated_at: now.toISOString(), source, summary: { projects: (projects || []).filter((x: any) => !x.is_archived).length, active_tasks: activeTasks.length, overdue: overdue.length, due_week: dueWeek.length, without_deadline: withoutDeadline.length, without_assignee: withoutAssignee.length }, projects: [...projectGroups.values()].sort((a, b) => b.overdue - a.overdue || b.active_tasks - a.active_tasks), stages: [...stageGroups.values()].sort((a, b) => b.count - a.count), people: [...people.values()].map((x: any) => ({ ...x, projects: x.projects.size })).sort((a, b) => b.overdue - a.overdue || b.active_tasks - a.active_tasks), bottleneck, bottleneck_state: bottleneckState, bottlenecks, attention }), { headers });
   } catch (error) {
     return new Response(JSON.stringify({ ok: false, error: String(error) }), { status: 500, headers });
   }
