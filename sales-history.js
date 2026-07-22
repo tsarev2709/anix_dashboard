@@ -3,35 +3,47 @@
   const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const formatNumber = value => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
   const formatDateTime = value => value ? new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  const shortDay = value => new Date(value).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+
+  const actionDescription = item => {
+    if (item.kind === 'transition') return `${item.from_status || 'Предыдущий этап'} → ${item.to_status || 'Новый этап'}`;
+    return [item.text, item.result].filter(Boolean).join(' · ') || item.label;
+  };
 
   async function loadSalesHistory() {
     const config = window.ANIX_CONFIG || {};
     if (!config.supabaseUrl || !q('#salesActivitySummary')) return;
+    q('#salesHistoryUpdated').textContent = 'загружаю задачи и события…';
     try {
-      const response = await fetch(`${config.supabaseUrl}/functions/v1/sales-history`, { headers: config.supabaseAnonKey ? { apikey: config.supabaseAnonKey } : {} });
+      const response = await fetch(`${config.supabaseUrl}/functions/v1/sales-activity`, { headers: config.supabaseAnonKey ? { apikey: config.supabaseAnonKey } : {} });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
       const summary = payload.summary || {};
       q('#salesActivitySummary').innerHTML = [
-        ['Сегодня', summary.today, 'переходов'],
-        ['7 дней', summary.week, 'переходов'],
-        ['Месяц', summary.month, 'переходов'],
-        ['Вперёд / назад', `${formatNumber(summary.forward)} / ${formatNumber(summary.backward)}`, 'движение по воронке'],
-      ].map(([label, value, note]) => `<article class="sales-summary-card neutral"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(note)}</span></article>`).join('');
+        ['Сегодня', summary.today, 'всех действий'],
+        ['7 дней', summary.week, 'всех действий'],
+        ['Месяц', summary.month, `${formatNumber(summary.completed_tasks_month)} задач + ${formatNumber(summary.transitions_month)} переходов`],
+        ['Просрочено', summary.overdue_tasks, `из ${formatNumber(summary.pending_tasks)} открытых задач`],
+      ].map(([label, value, note]) => `<article class="sales-summary-card ${label === 'Просрочено' && Number(value) ? 'red' : 'neutral'}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(formatNumber(value))}</strong><span>${escapeHtml(note)}</span></article>`).join('');
 
-      const maxStage = Math.max(1, ...(payload.by_stage || []).map(item => item.count));
-      q('#salesActivityStages').innerHTML = (payload.by_stage || []).length ? payload.by_stage.slice(0, 10).map(item => `<div class="activity-stage-row"><strong>${escapeHtml(item.stage)}</strong><div class="bar"><i style="width:${Math.max(5, item.count / maxStage * 100)}%"></i></div><span>${formatNumber(item.count)}</span></div>`).join('') : '<p class="empty-state">Переходов за месяц пока нет.</p>';
+      const kinds = payload.by_kind || [];
+      const maxKind = Math.max(1, ...kinds.map(item => item.count));
+      const daily = payload.daily || [];
+      const maxDaily = Math.max(1, ...daily.map(item => item.count));
+      q('#salesActivityStages').innerHTML = `
+        <div class="activity-days">${daily.map(item => `<div class="activity-day" title="${shortDay(item.date)}: ${item.count}"><div class="activity-day-bar"><i style="height:${Math.max(4, item.count / maxDaily * 100)}%"></i></div><small>${shortDay(item.date)}</small><strong>${formatNumber(item.count)}</strong></div>`).join('')}</div>
+        <div class="activity-kind-list">${kinds.length ? kinds.map(item => `<div class="activity-stage-row"><strong>${escapeHtml(item.label)}</strong><div class="bar"><i style="width:${Math.max(5, item.count / maxKind * 100)}%"></i></div><span>${formatNumber(item.count)}</span></div>`).join('') : '<p class="empty-state">Действий за месяц пока нет.</p>'}</div>`;
 
-      q('#salesActivityFeed').innerHTML = (payload.recent || []).length ? payload.recent.slice(0, 12).map(item => {
-        const transition = item.from_status_name ? `${item.from_status_name} → ${item.to_status_name}` : `Зафиксировано на этапе «${item.to_status_name}»`;
-        const direction = item.direction === 'backward' ? 'назад' : item.direction === 'forward' ? 'вперёд' : 'старт';
-        return `<div class="activity-feed-row ${escapeHtml(item.direction)}"><div><strong>${escapeHtml(item.lead_name)}</strong><small>${escapeHtml(item.pipeline_name || 'Воронка')} · ${escapeHtml(transition)}</small><small>${escapeHtml(item.manager_name)} · ${formatDateTime(item.observed_at)}</small></div><span>${direction}</span></div>`;
-      }).join('') : '<p class="empty-state">История появится после первых переходов между этапами.</p>';
+      q('#salesActivityFeed').innerHTML = (payload.recent || []).length ? payload.recent.slice(0, 18).map(item => `<div class="activity-feed-row ${escapeHtml(item.kind)}"><div><strong>${escapeHtml(item.label)}${item.lead_name ? ` · ${escapeHtml(item.lead_name)}` : ''}</strong><small>${escapeHtml(actionDescription(item))}</small><small>${escapeHtml(item.user_name)} · ${formatDateTime(item.at)}${item.pipeline_name ? ` · ${escapeHtml(item.pipeline_name)}` : ''}</small></div><span>${item.kind === 'transition' ? 'этап' : 'задача'}</span></div>`).join('') : '<p class="empty-state">История появится после синхронизации задач и событий amoCRM.</p>';
+
+      const topManager = (payload.managers || []).find(item => !item.is_admin) || (payload.managers || [])[0];
+      const managerNote = topManager ? `Основной продавец: ${topManager.name} — ${formatNumber(topManager.actions)} действий за месяц.` : 'Активный продавец пока не определён.';
       q('#salesHistoryUpdated').textContent = `обновлено ${formatDateTime(payload.generated_at)}`;
-      q('#salesHistoryCaveat').textContent = payload.caveat || '';
+      q('#salesHistoryCaveat').textContent = `${managerNote} Переход по этапу считается результативным действием; выполненная задача — операционным действием. Follow-up, ВКС, звонки и КП определяются по типу и тексту задачи amoCRM.`;
     } catch (error) {
-      q('#salesHistoryUpdated').textContent = 'ошибка загрузки';
+      q('#salesHistoryUpdated').textContent = 'нужна миграция или деплой функции';
       q('#salesActivityFeed').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+      q('#salesHistoryCaveat').textContent = 'Примените миграцию crm_activity в Supabase и повторно запустите Sync amoCRM.';
     }
   }
 
