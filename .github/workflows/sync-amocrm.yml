@@ -33,8 +33,20 @@ jobs:
       - name: Run amoCRM synchronization
         shell: bash
         run: |
-          response=$(curl --fail-with-body --silent --show-error \
+          tmp_file=$(mktemp)
+          http_code=$(curl --silent --show-error \
+            --output "$tmp_file" \
+            --write-out "%{http_code}" \
             -H "x-anix-sync-key: $ANIX_SYNC_KEY" \
             "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/amocrm-sync")
-          echo "$response"
-          echo "$response" | grep -q '"ok":true'
+
+          echo "HTTP $http_code"
+          cat "$tmp_file"
+          echo
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "amoCRM synchronization returned HTTP $http_code"
+            exit 1
+          fi
+
+          grep -q '"ok":true' "$tmp_file"
