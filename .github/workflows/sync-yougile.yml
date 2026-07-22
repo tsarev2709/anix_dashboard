@@ -3,7 +3,7 @@ name: Sync YouGile
 on:
   workflow_run:
     workflows:
-      - Deploy Supabase
+      - Build and deploy GitHub Pages
     types:
       - completed
     branches:
@@ -29,6 +29,16 @@ jobs:
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
       ANIX_SYNC_KEY: ${{ secrets.ANIX_SYNC_KEY }}
     steps:
+      - name: Show trigger context
+        shell: bash
+        run: |
+          echo "Trigger: $GITHUB_EVENT_NAME"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            echo "Deployment workflow: ${{ github.event.workflow_run.name }}"
+            echo "Deployment conclusion: ${{ github.event.workflow_run.conclusion }}"
+            echo "Deployment commit: ${{ github.event.workflow_run.head_sha }}"
+          fi
+
       - name: Validate required secrets
         shell: bash
         run: |
