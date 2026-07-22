@@ -11,3 +11,15 @@ verify_jwt = false
 
 [functions.sales-summary]
 verify_jwt = false
+
+[functions.sales-history]
+verify_jwt = false
+
+[functions.sales-cycle]
+verify_jwt = false
+
+[functions.yougile-sync]
+verify_jwt = false
+
+[functions.production-summary]
+verify_jwt = false
