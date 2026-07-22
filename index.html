@@ -20,7 +20,7 @@
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Источники</button>
       </nav>
-      <div class="sidebar-note">Прототип v0.8<br><span>событийный КПЭ</span></div>
+      <div class="sidebar-note">Прототип v0.9<br><span>диагностика системы</span></div>
     </aside>
 
     <main>
@@ -90,7 +90,15 @@
       <section id="production" class="view"><div class="section-placeholder"><h2>Производство</h2><p>Сюда подключается YouGile: задачи, этапы проекта, сроки, задержки, правки и загрузка команды.</p></div></section>
       <section id="finance" class="view"><div class="section-placeholder"><h2>Финансы</h2><p>Сюда подключается Точка: остатки, входящие, исходящие, расходы по проектам и прогноз денежного потока.</p></div></section>
       <section id="data" class="view"><div class="panel"><div class="panel-head"><div><p class="eyebrow">Аудит измеримости</p><h3>Каких данных не хватает сейчас</h3></div><span id="coverageLabel"></span></div><div id="dataAudit"></div></div></section>
-      <section id="sources" class="view"><article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Functions. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article><div id="sourceNotice" class="notice"></div><div id="sourcesGrid" class="sources-grid"></div></section>
+      <section id="sources" class="view">
+        <article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Functions. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article>
+        <div id="sourceNotice" class="notice"></div>
+        <div id="sourcesGrid" class="sources-grid"></div>
+        <section class="panel diagnostics-panel">
+          <div class="panel-head"><div><p class="eyebrow">Диагностика</p><h3>Файлы интерфейса и аналитические функции</h3></div><div class="diagnostic-actions"><span id="diagnosticsSummary">проверка…</span><button class="ghost" id="runDiagnostics">Проверить снова</button></div></div>
+          <div id="runtimeDiagnostics"></div>
+        </section>
+      </section>
     </main>
   </div>
   <script src="runtime-config.js"></script>
@@ -98,5 +106,6 @@
   <script src="sales-history.js"></script>
   <script src="sales-cycle.js"></script>
   <script src="sales-flow.js"></script>
+  <script src="diagnostics.js"></script>
 </body>
 </html>
