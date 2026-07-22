@@ -1,0 +1,53 @@
+name: Sync YouGile
+
+on:
+  schedule:
+    - cron: '15,45 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yougile-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      ANIX_SYNC_KEY: ${{ secrets.ANIX_SYNC_KEY }}
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          test -n "$SUPABASE_PROJECT_ID"
+          test -n "$ANIX_SYNC_KEY"
+
+      - name: Run YouGile synchronization
+        shell: bash
+        run: |
+          tmp_file=$(mktemp)
+          trap 'rm -f "$tmp_file"' EXIT
+
+          http_code=$(curl --silent --show-error \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            --connect-timeout 20 \
+            --max-time 600 \
+            --output "$tmp_file" \
+            --write-out "%{http_code}" \
+            -H "x-anix-sync-key: $ANIX_SYNC_KEY" \
+            "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/yougile-sync")
+
+          echo "HTTP $http_code"
+          cat "$tmp_file"
+          echo
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            exit 1
+          fi
+
+          grep -q '"ok":true' "$tmp_file"
