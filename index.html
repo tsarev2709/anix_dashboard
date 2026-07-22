@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Anix — операционная панель</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="sales-activity.css" />
 </head>
 <body>
   <div class="shell">
@@ -42,9 +43,9 @@
         <div class="sales-main-grid"><section class="panel pyramid-panel"><div class="panel-head"><div><p class="eyebrow">Пирамида метрик</p><h3>Где именно ломается воронка</h3></div><span>сверху — результат</span></div><div id="metricPyramid" class="metric-pyramid"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ответственный продавец</p><h3>Текущая нагрузка</h3></div><span>1 активный продавец</span></div><div id="managerPerformance"></div></section></div>
 
         <section class="panel sales-history-panel">
-          <div class="panel-head"><div><p class="eyebrow">История работы продавца</p><h3>Движения сделок по этапам</h3></div><span id="salesHistoryUpdated">загрузка…</span></div>
+          <div class="panel-head"><div><p class="eyebrow">История работы продавца</p><h3>Движения сделок и выполненные задачи</h3></div><span id="salesHistoryUpdated">загрузка…</span></div>
           <div id="salesActivitySummary" class="sales-summary-grid"></div>
-          <div class="sales-main-grid history-grid"><div><h3 class="subhead">Действия по этапам</h3><div id="salesActivityStages"></div></div><div><h3 class="subhead">Последние переходы</h3><div id="salesActivityFeed"></div></div></div>
+          <div class="sales-main-grid history-grid"><div><h3 class="subhead">Динамика и типы действий</h3><div id="salesActivityStages"></div></div><div><h3 class="subhead">Последние действия</h3><div id="salesActivityFeed"></div></div></div>
           <p class="history-caveat" id="salesHistoryCaveat"></p>
         </section>
 
