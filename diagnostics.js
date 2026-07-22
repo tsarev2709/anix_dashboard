@@ -1,8 +1,8 @@
 (() => {
   const q = selector => document.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  const resources = ['styles.css', 'sales-activity.css', 'sales-cycle.css', 'runtime-config.js', 'app.js', 'sales-history.js', 'sales-cycle.js', 'sales-flow.js', 'diagnostics.js'];
-  const functions = ['source-status', 'sales-summary', 'sales-history', 'sales-cycle'];
+  const resources = ['styles.css', 'sales-activity.css', 'sales-cycle.css', 'production.css', 'runtime-config.js', 'app.js', 'sales-history.js', 'sales-cycle.js', 'sales-flow.js', 'production.js', 'diagnostics.js'];
+  const functions = ['source-status', 'sales-summary', 'sales-history', 'sales-cycle', 'production-summary'];
 
   const row = item => `<div class="diagnostic-row ${item.ok ? 'ok' : 'error'}"><div><strong>${esc(item.name)}</strong><small>${esc(item.kind)}</small></div><span>${esc(item.status)}</span><p>${esc(item.detail || '')}</p></div>`;
 
@@ -26,7 +26,7 @@
       let detail = `${Math.round(performance.now() - started)} мс`;
       if (!response.ok) {
         const body = await response.text();
-        detail = body.slice(0, 280) || 'Функция вернула ошибку без текста.';
+        detail = body.slice(0, 360) || 'Функция вернула ошибку без текста.';
       }
       return { name, kind: 'Supabase Edge Function', ok: response.ok, status: `HTTP ${response.status}`, detail };
     } catch (error) {
