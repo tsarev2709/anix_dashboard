@@ -22,9 +22,15 @@
     ].join('');
 
     const bottleneck = payload.bottleneck;
-    q('#productionBottleneck').innerHTML = bottleneck
-      ? `<div><p class="eyebrow">Главный тормоз</p><h3>${esc(bottleneck.column_name)}</h3><p>${bottleneck.count} задач лежат здесь в среднем ${number(bottleneck.average_days)} дня. Максимум — ${number(bottleneck.max_days)} дня.</p></div><strong class="metric">${number(bottleneck.average_days)} дн.</strong>`
-      : '<div><strong>Пока недостаточно истории, чтобы определить главный тормоз.</strong><p>После нескольких синхронизаций начнёт накапливаться история переходов задач.</p></div>';
+    if (bottleneck) {
+      const coverage = Math.round(Number(bottleneck.history_coverage || 0) * 100);
+      q('#productionBottleneck').innerHTML = `<div><p class="eyebrow">Главный тормоз</p><h3>${esc(bottleneck.column_name)}</h3><p>${bottleneck.count} задач: среднее ${number(bottleneck.average_days)} дня, медиана ${number(bottleneck.median_days)} дня, максимум ${number(bottleneck.max_days)} дня. Просрочено: ${number(bottleneck.overdue)}. История точна для ${coverage}% задач.</p></div><strong class="metric">${number(bottleneck.average_days)} дн.</strong>`;
+    } else {
+      const message = payload.bottleneck_state === 'collecting_history'
+        ? 'История переходов ещё накапливается. Свежие входящие и завершённые колонки намеренно не считаются тормозом.'
+        : 'Сейчас нет этапа с заметной задержкой по накопленной истории.';
+      q('#productionBottleneck').innerHTML = `<div><strong>Главный тормоз пока не определён.</strong><p>${esc(message)}</p></div>`;
+    }
 
     const projects = payload.projects || [];
     q('#productionProjects').innerHTML = projects.length ? projects.map(item => `<div class="production-row"><div><strong>${esc(item.project_name)}</strong><small>${item.active_tasks} активных задач · ${item.without_deadline} без дедлайна</small></div><div><strong>${item.overdue} просрочено</strong><small>${item.due_week} дедлайнов на неделю</small></div><div><strong>${item.active_tasks}</strong><small>в работе</small></div></div>`).join('') : '<div class="empty-state">Активные проекты пока не загружены.</div>';
