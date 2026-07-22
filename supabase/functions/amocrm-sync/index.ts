@@ -68,6 +68,29 @@ Deno.serve(async (req) => {
       if (statuses.length) await supabase.from('crm_statuses').upsert(statuses);
     }
 
+    let usersPage = 1;
+    let usersRead = 0;
+    while (usersPage <= 20) {
+      const usersBody = await api(`/api/v4/users?limit=250&page=${usersPage}`);
+      const users = usersBody?._embedded?.users || [];
+      if (!users.length) break;
+      usersRead += users.length;
+      const userRows = users.map((user: any) => ({
+        source_slug: 'amocrm',
+        external_id: user.id,
+        name: user.name || `Пользователь #${user.id}`,
+        email: user.email || null,
+        is_admin: Boolean(user.rights?.is_admin),
+        is_active: user.rights?.is_active !== false,
+        raw: user,
+        synced_at: new Date().toISOString(),
+      }));
+      const { error: usersError } = await supabase.from('crm_users').upsert(userRows);
+      if (usersError) throw usersError;
+      if (!usersBody?._links?.next) break;
+      usersPage += 1;
+    }
+
     let page = 1;
     let recordsRead = 0;
     let recordsWritten = 0;
@@ -89,9 +112,9 @@ Deno.serve(async (req) => {
       page += 1;
     }
 
-    await supabase.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: recordsRead, records_written: recordsWritten }).eq('id', runId);
+    await supabase.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: recordsRead + usersRead, records_written: recordsWritten + usersRead }).eq('id', runId);
     await supabase.from('data_sources').update({ status: 'healthy', last_success_at: new Date().toISOString(), last_attempt_at: new Date().toISOString(), last_error: null }).eq('slug', 'amocrm');
-    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten }), { headers: jsonHeaders });
+    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead }), { headers: jsonHeaders });
   } catch (error) {
     if (runId) await supabase.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: String(error) }).eq('id', runId);
     await supabase.from('data_sources').update({ status: 'error', last_attempt_at: new Date().toISOString(), last_error: String(error) }).eq('slug', 'amocrm');
