@@ -1,7 +1,7 @@
 project_id = "uuywdscpywuoacbbjhhb"
 
 [functions.source-status]
-verify_jwt = false
+verify_jwt = true
 
 [functions.amocrm-oauth]
 verify_jwt = false
@@ -10,16 +10,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.sales-summary]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sales-history]
-verify_jwt = false
+verify_jwt = true
 
 [functions.sales-cycle]
-verify_jwt = false
+verify_jwt = true
 
 [functions.yougile-sync]
 verify_jwt = false
 
 [functions.production-summary]
-verify_jwt = false
+verify_jwt = true
