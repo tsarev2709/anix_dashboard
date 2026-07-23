@@ -27,14 +27,18 @@ jobs:
       - name: Check required files
         run: |
           test -f index.html
+          test -f auth.css
           test -f styles.css
           test -f app.js
+          test -f auth.js
           test -f runtime-config.js
           test -f sales-activity.css
           test -f sales-cycle.css
           test -f sales-history.js
           test -f sales-cycle.js
           test -f sales-flow.js
+          test -f production.css
+          test -f production.js
           test -f diagnostics.js
 
       - name: Build static site directory
@@ -47,14 +51,18 @@ jobs:
       - name: Validate generated files
         run: |
           test -s dist/index.html
+          test -s dist/auth.css
           test -s dist/styles.css
           test -s dist/app.js
+          test -s dist/auth.js
           test -s dist/runtime-config.js
           test -s dist/sales-activity.css
           test -s dist/sales-cycle.css
           test -s dist/sales-history.js
           test -s dist/sales-cycle.js
           test -s dist/sales-flow.js
+          test -s dist/production.css
+          test -s dist/production.js
           test -s dist/diagnostics.js
 
       - name: Upload preview artifact
