@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - Build and deploy GitHub Pages
+      - Deploy Supabase
     types:
       - completed
     branches:
