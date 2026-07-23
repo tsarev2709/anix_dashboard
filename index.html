@@ -3,13 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex,nofollow,noarchive" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://uuywdscpywuoacbbjhhb.supabase.co; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; base-uri 'self'; form-action 'self'" />
   <title>Anix — операционная панель</title>
+  <link rel="stylesheet" href="auth.css" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="sales-activity.css" />
   <link rel="stylesheet" href="sales-cycle.css" />
   <link rel="stylesheet" href="production.css" />
 </head>
-<body>
+<body class="auth-locked">
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">A</span><div><strong>Anix</strong><small>операционная панель</small></div></div>
@@ -72,6 +75,7 @@
     </main>
   </div>
   <script src="runtime-config.js"></script>
+  <script src="auth.js"></script>
   <script src="app.js"></script>
   <script src="sales-history.js"></script>
   <script src="sales-cycle.js"></script>
