@@ -38,27 +38,39 @@ jobs:
           test -n "$SUPABASE_ACCESS_TOKEN"
           test -n "$SUPABASE_PROJECT_ID"
 
-      - name: Apply idempotent production schema
+      - name: Apply idempotent database migrations
         shell: bash
         run: |
-          sql=$(cat supabase/migrations/20260722_120000_yougile_production.sql)
-          payload=$(jq -n --arg query "$sql" '{query:$query, read_only:false}')
-          tmp_file=$(mktemp)
-          trap 'rm -f "$tmp_file"' EXIT
-          http_code=$(curl --silent --show-error \
-            --output "$tmp_file" \
-            --write-out "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            --data "$payload" \
-            "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query")
-          echo "Schema HTTP $http_code"
-          cat "$tmp_file"
-          echo
-          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
-            exit 1
-          fi
+          set -euo pipefail
+          migrations=(
+            supabase/migrations/20260722_120000_yougile_production.sql
+            supabase/migrations/20260723_090000_dashboard_security.sql
+          )
+
+          for migration in "${migrations[@]}"; do
+            echo "Applying $migration"
+            sql=$(cat "$migration")
+            payload=$(jq -n --arg query "$sql" '{query:$query, read_only:false}')
+            tmp_file=$(mktemp)
+
+            http_code=$(curl --silent --show-error \
+              --output "$tmp_file" \
+              --write-out "%{http_code}" \
+              -X POST \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data "$payload" \
+              "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/database/query")
+
+            echo "Migration HTTP $http_code"
+            cat "$tmp_file"
+            echo
+            rm -f "$tmp_file"
+
+            if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+              exit 1
+            fi
+          done
 
       - name: Deploy Edge Functions
         run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
