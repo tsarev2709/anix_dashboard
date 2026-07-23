@@ -74,3 +74,26 @@ jobs:
 
       - name: Deploy Edge Functions
         run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Verify anonymous access is blocked
+        shell: bash
+        run: |
+          set -euo pipefail
+          functions=(source-status sales-summary sales-history sales-cycle production-summary)
+          for function_name in "${functions[@]}"; do
+            tmp_file=$(mktemp)
+            http_code=$(curl --silent --show-error \
+              --output "$tmp_file" \
+              --write-out "%{http_code}" \
+              --connect-timeout 20 \
+              --max-time 60 \
+              "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/${function_name}")
+            echo "${function_name}: HTTP ${http_code}"
+            cat "$tmp_file"
+            echo
+            rm -f "$tmp_file"
+            if [ "$http_code" != "401" ]; then
+              echo "Expected HTTP 401 for anonymous request to ${function_name}."
+              exit 1
+            fi
+          done
