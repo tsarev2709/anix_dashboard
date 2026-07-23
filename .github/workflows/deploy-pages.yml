@@ -41,6 +41,13 @@ jobs:
           test -f production.js
           test -f diagnostics.js
 
+      - name: Check JavaScript syntax
+        run: |
+          for file in ./*.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+
       - name: Build static site directory
         run: |
           rm -rf dist
