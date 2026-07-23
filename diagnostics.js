@@ -1,7 +1,7 @@
 (() => {
   const q = selector => document.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  const resources = ['styles.css', 'sales-activity.css', 'sales-cycle.css', 'production.css', 'runtime-config.js', 'app.js', 'sales-history.js', 'sales-cycle.js', 'sales-flow.js', 'production.js', 'diagnostics.js'];
+  const resources = ['auth.css', 'styles.css', 'sales-activity.css', 'sales-cycle.css', 'production.css', 'runtime-config.js', 'auth.js', 'app.js', 'sales-history.js', 'sales-cycle.js', 'sales-flow.js', 'production.js', 'diagnostics.js'];
   const functions = ['source-status', 'sales-summary', 'sales-history', 'sales-cycle', 'production-summary'];
 
   const row = item => `<div class="diagnostic-row ${item.ok ? 'ok' : 'error'}"><div><strong>${esc(item.name)}</strong><small>${esc(item.kind)}</small></div><span>${esc(item.status)}</span><p>${esc(item.detail || '')}</p></div>`;
@@ -38,7 +38,7 @@
     const target = q('#runtimeDiagnostics');
     const summary = q('#diagnosticsSummary');
     if (!target) return;
-    target.innerHTML = '<div class="empty-state">Проверяю опубликованные файлы и API…</div>';
+    target.innerHTML = '<div class="empty-state">Проверяю опубликованные файлы, авторизацию и API…</div>';
     const results = await Promise.all([...resources.map(checkResource), ...functions.map(checkFunction)]);
     const failed = results.filter(item => !item.ok);
     target.innerHTML = results.map(row).join('');
