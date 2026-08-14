@@ -66,7 +66,7 @@ const manualCount = snapshot.dataAudit.filter(x => x.status === 'manual').length
 qs('#coverageLabel').textContent = `Покрытие данных: ${Math.round((measuredCount + manualCount * .5) / snapshot.dataAudit.length * 100)}%`;
 qs('#dataAudit').innerHTML = snapshot.dataAudit.map(item => `<div class="audit-row"><strong>${esc(item.metric)}</strong><span class="audit-status ${item.status}">${esc(item.label)}</span><p>${esc(item.reason)}</p></div>`).join('');
 
-const titles = { overview: 'Обзор компании', sales: 'Управление продажами', production: 'Производство', finance: 'Финансы', data: 'Качество данных', sources: 'Источники данных' };
+const titles = { overview: 'Обзор компании', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Производство', finance: 'Финансы', data: 'Качество данных', sources: 'Интеграции' };
 function switchView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === view));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
