@@ -8,6 +8,7 @@ on:
       - completed
 
 permissions:
+  actions: write
   contents: write
   pull-requests: write
 
