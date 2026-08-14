@@ -60,5 +60,17 @@ jobs:
               gh pr ready "$pr_number" --repo "$GITHUB_REPOSITORY"
             fi
 
-            gh pr merge "$pr_number"               --repo "$GITHUB_REPOSITORY"               --squash               --delete-branch
+            changed_files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$pr_number/files" --jq '.[].filename')
+            needs_supabase=false
+            if grep -Eq '^(supabase/|\.github/workflows/deploy-supabase\.yml$)' <<< "$changed_files"; then
+              needs_supabase=true
+            fi
+
+            gh pr merge "$pr_number" --repo "$GITHUB_REPOSITORY" --squash --delete-branch
+
+            # GITHUB_TOKEN merge does not start push workflows. workflow_dispatch is allowed.
+            gh workflow run deploy-pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+            if [[ "$needs_supabase" == "true" ]]; then
+              gh workflow run deploy-supabase.yml --repo "$GITHUB_REPOSITORY" --ref main
+            fi
           done
