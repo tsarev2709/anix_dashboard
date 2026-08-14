@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="sales-activity.css" />
   <link rel="stylesheet" href="sales-cycle.css" />
   <link rel="stylesheet" href="production.css" />
+  <link rel="stylesheet" href="control.css" />
 </head>
 <body class="auth-locked">
   <div class="shell">
@@ -18,13 +19,15 @@
       <div class="brand"><span class="brand-mark">A</span><div><strong>Anix</strong><small>операционная панель</small></div></div>
       <nav>
         <button class="nav-item active" data-view="overview">Обзор</button>
+        <button class="nav-item" data-view="content">Контент</button>
+        <button class="nav-item" data-view="website">Сайт и AI</button>
         <button class="nav-item" data-view="sales">Продажи</button>
         <button class="nav-item" data-view="production">Производство</button>
         <button class="nav-item" data-view="finance">Финансы</button>
         <button class="nav-item" data-view="data">Данные</button>
-        <button class="nav-item" data-view="sources">Источники</button>
+        <button class="nav-item" data-view="sources">Интеграции</button>
       </nav>
-      <div class="sidebar-note">Прототип v1.0<br><span>YouGile подключение</span></div>
+      <div class="sidebar-note">Anix Control v1<br><span>единая панель управления</span></div>
     </aside>
 
     <main>
@@ -69,9 +72,40 @@
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Этапы производства</p><h3>Сколько задач лежит в каждой колонке</h3></div><span>структура YouGile без нормализации</span></div><div id="productionStages"></div></section>
       </section>
 
+
+      <section id="content" class="view">
+        <div class="control-toolbar">
+          <div><p class="eyebrow">Управление публикациями</p><h2>Контент Anix</h2><p>Черновики, версии и подготовка материалов основного сайта и Wiki.</p></div>
+          <button id="newContentEntry">Новый материал</button>
+        </div>
+        <div class="control-grid">
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">Материалы</p><h3>Последние изменения</h3></div><span>до 100 записей</span></div><div id="contentEntryList" class="control-list"></div></section>
+          <section class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Редактор</p><h3>Структурированный черновик</h3></div><span>каждое сохранение создаёт версию</span></div>
+            <form id="contentEditor" class="control-form">
+              <label class="control-field"><span>Slug</span><input id="contentSlug" required placeholder="cases/new-case"></label>
+              <label class="control-field"><span>Заголовок</span><input id="contentTitle" required placeholder="Название материала"></label>
+              <label class="control-field"><span>Тип</span><select id="contentType"><option value="page">Страница</option><option value="case">Кейс</option><option value="article">Статья</option><option value="faq">FAQ</option><option value="cta">CTA</option><option value="seo">SEO</option><option value="wiki">Wiki</option></select></label>
+              <label class="control-field"><span>Статус</span><select id="contentStatus"><option value="draft">Черновик</option><option value="review">На проверке</option><option value="published">Опубликовано</option><option value="archived">Архив</option></select></label>
+              <label class="control-field"><span>Репозиторий</span><input id="contentRepo" value="tsarev2709/anix_landing"></label>
+              <label class="control-field"><span>Путь файла</span><input id="contentPath" placeholder="src/data/cases/example.json"></label>
+              <label class="control-field wide"><span>Содержимое</span><textarea id="contentBody" placeholder="Текст, Markdown или структурированные данные материала"></textarea></label>
+              <div class="control-actions"><button id="contentSave" class="control-save" type="submit">Сохранить версию</button><span id="contentSaveMessage" class="control-message"></span></div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section id="website" class="view">
+        <div class="control-toolbar"><div><p class="eyebrow">studio.anix-ai.pro</p><h2>Сайт и AI-консультант</h2><p>Заявки, диалоги, передача в CRM и штатные fallback-сценарии.</p></div><button id="refreshControl">Обновить</button></div>
+        <div id="websiteMetricGrid" class="website-health-grid"></div>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Управление функциями</p><h3>Публичные возможности сайта</h3></div><span>секреты остаются только на сервере</span></div><div id="featureFlagGrid" class="flag-grid"></div></section>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Состояние</p><h3>Контур Anix Control</h3></div><span id="controlLoadStatus">загрузка…</span></div><p class="history-caveat">Если метрики сайта находятся в другом Supabase-проекте, панель честно показывает «нет данных». Следующий этап — безопасная межконтурная агрегация без передачи service-role ключей в браузер.</p></section>
+      </section>
+
       <section id="finance" class="view"><div class="section-placeholder"><h2>Финансы</h2><p>Сюда подключается Точка: остатки, входящие, исходящие, расходы по проектам и прогноз денежного потока.</p></div></section>
       <section id="data" class="view"><div class="panel"><div class="panel-head"><div><p class="eyebrow">Аудит измеримости</p><h3>Каких данных не хватает сейчас</h3></div><span id="coverageLabel"></span></div><div id="dataAudit"></div></div></section>
-      <section id="sources" class="view"><article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Functions. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article><div id="sourceNotice" class="notice"></div><div id="sourcesGrid" class="sources-grid"></div><section class="panel diagnostics-panel"><div class="panel-head"><div><p class="eyebrow">Диагностика</p><h3>Файлы интерфейса и аналитические функции</h3></div><div class="diagnostic-actions"><span id="diagnosticsSummary">проверка…</span><button class="ghost" id="runDiagnostics">Проверить снова</button></div></div><div id="runtimeDiagnostics"></div></section></section>
+      <section id="sources" class="view"><article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Functions. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article><div id="sourceNotice" class="notice"></div><div id="sourcesGrid" class="sources-grid"></div><section class="panel"><div class="panel-head"><div><p class="eyebrow">Операционное управление</p><h3>Пауза и возобновление интеграций</h3></div><span>без показа токенов</span></div><div id="sourceControlGrid" class="integration-control-grid"></div></section><section class="panel diagnostics-panel"><div class="panel-head"><div><p class="eyebrow">Диагностика</p><h3>Файлы интерфейса и аналитические функции</h3></div><div class="diagnostic-actions"><span id="diagnosticsSummary">проверка…</span><button class="ghost" id="runDiagnostics">Проверить снова</button></div></div><div id="runtimeDiagnostics"></div></section></section>
     </main>
   </div>
   <script src="runtime-config.js"></script>
@@ -81,6 +115,7 @@
   <script src="sales-cycle.js"></script>
   <script src="sales-flow.js"></script>
   <script src="production.js"></script>
+  <script src="control.js"></script>
   <script src="diagnostics.js"></script>
 </body>
 </html>

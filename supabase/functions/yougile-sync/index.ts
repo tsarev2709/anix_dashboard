@@ -82,6 +82,12 @@ Deno.serve(async req => {
     if (expected && req.headers.get('x-anix-sync-key') !== expected) {
       return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 401, headers: jsonHeaders });
     }
+    const { data: source, error: sourceError } = await supabase.from('data_sources').select('enabled,status').eq('slug', SOURCE).maybeSingle();
+    if (sourceError) throw sourceError;
+    if (source?.enabled === false || source?.status === 'paused') {
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'source_paused' }), { status: 200, headers: jsonHeaders });
+    }
+
     const token = Deno.env.get('YOUGILE_API_KEY');
     const companyId = Deno.env.get('YOUGILE_COMPANY_ID');
     const base = (Deno.env.get('YOUGILE_BASE_URL') || DEFAULT_BASE).replace(/\/$/, '');

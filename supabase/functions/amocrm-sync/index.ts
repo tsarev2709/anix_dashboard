@@ -27,8 +27,11 @@ Deno.serve(async req => {
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   let runId: number | null = null;
   try {
-    const { data: source, error: sourceError } = await db.from('data_sources').select('id,last_success_at').eq('slug', 'amocrm').single();
+    const { data: source, error: sourceError } = await db.from('data_sources').select('id,last_success_at,enabled,status').eq('slug', 'amocrm').single();
     if (sourceError) throw sourceError;
+    if (source.enabled === false || source.status === 'paused') {
+      return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'source_paused' }), { status: 200, headers });
+    }
     const { data: run, error: runError } = await db.from('sync_runs').insert({ source_id: source.id }).select('id').single();
     if (runError) throw runError;
     runId = run.id;

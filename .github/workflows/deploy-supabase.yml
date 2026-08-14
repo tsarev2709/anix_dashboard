@@ -45,6 +45,7 @@ jobs:
           migrations=(
             supabase/migrations/20260722_120000_yougile_production.sql
             supabase/migrations/20260723_090000_dashboard_security.sql
+            supabase/migrations/202608140001_anix_control.sql
           )
 
           for migration in "${migrations[@]}"; do
@@ -79,7 +80,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          functions=(source-status sales-summary sales-history sales-cycle production-summary)
+          functions=(source-status sales-summary sales-history sales-cycle production-summary control-center)
           for function_name in "${functions[@]}"; do
             tmp_file=$(mktemp)
             http_code=$(curl --silent --show-error \
