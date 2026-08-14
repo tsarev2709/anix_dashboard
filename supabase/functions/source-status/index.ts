@@ -24,7 +24,7 @@ Deno.serve(async (request) => {
 
     const { data, error } = await supabase
       .from('data_sources')
-      .select('slug,name,category,connection_mode,status,last_success_at,last_attempt_at,last_error,freshness_minutes')
+      .select('slug,name,category,connection_mode,status,enabled,disconnected_at,last_success_at,last_attempt_at,last_error,freshness_minutes')
       .order('name');
 
     if (error) throw error;
