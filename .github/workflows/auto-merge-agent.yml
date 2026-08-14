@@ -1,0 +1,64 @@
+name: Auto merge trusted agent changes
+
+on:
+  workflow_run:
+    workflows:
+      - Build and deploy GitHub Pages
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-merge-agent-pr
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Merge validated internal agent PR
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate trust boundary and merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRS_JSON: ${{ toJson(github.event.workflow_run.pull_requests) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_numbers=$(jq -r '.[].number' <<< "$PRS_JSON")
+          test -n "$pr_numbers"
+
+          for pr_number in $pr_numbers; do
+            pr_json=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number")
+            head_repo=$(jq -r '.head.repo.full_name' <<< "$pr_json")
+            head_branch=$(jq -r '.head.ref' <<< "$pr_json")
+            base_branch=$(jq -r '.base.ref' <<< "$pr_json")
+            state=$(jq -r '.state' <<< "$pr_json")
+            merged=$(jq -r '.merged' <<< "$pr_json")
+            draft=$(jq -r '.draft' <<< "$pr_json")
+
+            if [[ "$head_repo" != "$GITHUB_REPOSITORY" ]]; then
+              echo "Skip PR #$pr_number: external repository $head_repo"
+              continue
+            fi
+            if [[ "$head_branch" != agent/* ]]; then
+              echo "Skip PR #$pr_number: branch $head_branch is outside agent/*"
+              continue
+            fi
+            if [[ "$base_branch" != "main" || "$state" != "open" || "$merged" == "true" ]]; then
+              echo "Skip PR #$pr_number: state=$state merged=$merged base=$base_branch"
+              continue
+            fi
+
+            if [[ "$draft" == "true" ]]; then
+              gh pr ready "$pr_number" --repo "$GITHUB_REPOSITORY"
+            fi
+
+            gh pr merge "$pr_number"               --repo "$GITHUB_REPOSITORY"               --squash               --delete-branch
+          done
