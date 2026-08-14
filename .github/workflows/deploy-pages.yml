@@ -27,6 +27,7 @@ jobs:
       - name: Check required files
         run: |
           test -f index.html
+          test -f CNAME
           test -f auth.css
           test -f styles.css
           test -f app.js
@@ -55,11 +56,13 @@ jobs:
           rm -rf dist
           mkdir -p dist
           find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.png' -o -name '*.ico' \) -exec cp {} dist/ \;
+          cp CNAME dist/CNAME
           touch dist/.nojekyll
 
       - name: Validate generated files
         run: |
           test -s dist/index.html
+          test -s dist/CNAME
           test -s dist/auth.css
           test -s dist/styles.css
           test -s dist/app.js
@@ -97,6 +100,7 @@ jobs:
           rm -rf dist
           mkdir -p dist
           find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.png' -o -name '*.ico' \) -exec cp {} dist/ \;
+          cp CNAME dist/CNAME
           touch dist/.nojekyll
 
       - name: Deploy to gh-pages branch
