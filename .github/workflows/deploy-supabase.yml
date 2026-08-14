@@ -44,7 +44,8 @@ jobs:
           set -euo pipefail
           migrations=(
             supabase/migrations/20260722_120000_yougile_production.sql
-            supabase/migrations/20260723_090000_dashboard_security.sql\n            supabase/migrations/202608140001_anix_control.sql
+            supabase/migrations/20260723_090000_dashboard_security.sql
+            supabase/migrations/202608140001_anix_control.sql
           )
 
           for migration in "${migrations[@]}"; do
