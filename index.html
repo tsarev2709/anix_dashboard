@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="sales-activity.css" />
   <link rel="stylesheet" href="sales-cycle.css" />
   <link rel="stylesheet" href="production.css" />
+  <link rel="stylesheet" href="ceo-dashboard.css" />
   <link rel="stylesheet" href="control.css" />
 </head>
 <body class="auth-locked">
@@ -18,12 +19,16 @@
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">A</span><div><strong>Anix</strong><small>операционная панель</small></div></div>
       <nav>
-        <button class="nav-item active" data-view="overview">Обзор</button>
+        <span class="nav-group-label">Управление</span>
+        <button class="nav-item active" data-view="overview">Сегодня</button>
+        <button class="nav-item" data-view="weekly">Неделя</button>
+        <button class="nav-item" data-view="sales">Продажи</button>
+        <button class="nav-item" data-view="production">Проекты</button>
+        <button class="nav-item" data-view="finance">Касса</button>
+        <button class="nav-item" data-view="decisions">Решения</button>
+        <span class="nav-group-label nav-group-system">Система</span>
         <button class="nav-item" data-view="content">Контент</button>
         <button class="nav-item" data-view="website">Сайт и AI</button>
-        <button class="nav-item" data-view="sales">Продажи</button>
-        <button class="nav-item" data-view="production">Производство</button>
-        <button class="nav-item" data-view="finance">Финансы</button>
         <button class="nav-item" data-view="data">Данные</button>
         <button class="nav-item" data-view="sources">Интеграции</button>
       </nav>
@@ -37,11 +42,49 @@
       </header>
 
       <section id="overview" class="view active">
-        <article class="hero-card"><div><p class="eyebrow">Главное ограничение</p><h2>Подключаем фактическое производство</h2><p>Продажи уже работают. YouGile даст реальные проекты, задачи, сроки, просрочки и загрузку команды.</p></div><span class="risk-badge">В работе</span></article>
-        <div class="status-grid" id="statusGrid"></div>
-        <div class="metric-grid" id="metricGrid"></div>
-        <div class="two-col"><section class="panel"><div class="panel-head"><div><p class="eyebrow">Воронка продаж</p><h3>Текущие открытые сделки</h3></div><span id="overviewSalesUpdated">amoCRM</span></div><div id="funnel"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Проекты</p><h3>Риски производства</h3></div><span>YouGile</span></div><div id="projects"></div></section></div>
-        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Недостающие данные</p><h3>Что мешает принимать решения</h3></div><button class="ghost" data-view-jump="data">Открыть аудит</button></div><div id="missingPreview" class="missing-grid"></div></section>
+        <section class="ceo-heading">
+          <div><p class="eyebrow">CEO-дайджест</p><h2>Состояние Anix сегодня</h2><p id="ceoAsOf" class="ceo-as-of">Загружаю актуальный срез…</p></div>
+          <button id="refreshCeo" class="ceo-refresh">Обновить данные</button>
+        </section>
+
+        <section class="attention-command panel">
+          <div class="attention-command-head">
+            <div><p class="eyebrow">Требует внимания сегодня</p><h3 id="attentionHeadline">Собираю управленческие исключения…</h3><p id="attentionSubhead">Показываем только ситуации, из которых следует конкретное действие.</p></div>
+            <div id="attentionCounters" class="attention-counters"></div>
+          </div>
+          <div id="ceoAlerts" class="ceo-alert-list"><div class="ceo-loading">Проверяю продажи, проекты и решения…</div></div>
+          <button id="showAllAlerts" class="ghost alert-more" hidden>Показать все исключения</button>
+        </section>
+
+        <div id="ceoKpiGrid" class="ceo-kpi-grid"></div>
+
+        <section class="panel ceo-section">
+          <div class="panel-head"><div><p class="eyebrow">Зависшие сделки</p><h3>Где остановились продажи и деньги</h3></div><button class="ghost" data-view-jump="sales">Вся аналитика продаж</button></div>
+          <div id="stalledMetricGrid" class="decision-metric-grid"></div>
+        </section>
+
+        <section class="panel ceo-section">
+          <div class="panel-head"><div><p class="eyebrow">Здоровье воронки</p><h3>Конверсия и время на реальных стадиях amoCRM</h3></div><span id="funnelCoverageNote">наблюдаемые переходы</span></div>
+          <div id="funnelSummary" class="funnel-summary-grid"></div>
+          <div id="ceoFunnelHealth" class="ceo-funnel-health"><div class="ceo-loading">Считаю этапы…</div></div>
+        </section>
+
+        <section class="panel ceo-section">
+          <div class="panel-head"><div><p class="eyebrow">Проекты требуют внимания</p><h3>Сроки, движение и ответственность</h3></div><button class="ghost" data-view-jump="production">Открыть проекты</button></div>
+          <div id="ceoProjectMetrics" class="decision-metric-grid compact"></div>
+          <div id="ceoProjects" class="ceo-project-list"></div>
+        </section>
+
+        <section class="panel ceo-section cash-preview">
+          <div class="panel-head"><div><p class="eyebrow">Деньги</p><h3>Что можно посчитать достоверно сейчас</h3></div><button class="ghost" data-view-jump="finance">Открыть кассу</button></div>
+          <div id="ceoCashOverview" class="cash-overview-grid"></div>
+        </section>
+      </section>
+
+      <section id="weekly" class="view">
+        <div class="control-toolbar"><div><p class="eyebrow">Неделя</p><h2>Что изменилось за семь дней</h2><p id="weeklyNotice">Сравнение строится по ежедневным снимкам реальных данных.</p></div><button id="refreshWeekly">Обновить</button></div>
+        <div id="weeklyMetricGrid" class="weekly-metric-grid"></div>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Изменения</p><h3>Сигналы для управленческого разбора</h3></div><span id="weeklyComparedAt">копим историю</span></div><div id="weeklySignals" class="ceo-alert-list"></div></section>
       </section>
 
       <section id="sales" class="view">
@@ -103,7 +146,17 @@
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Состояние</p><h3>Контур Anix Control</h3></div><span id="controlLoadStatus">загрузка…</span></div><p class="history-caveat">Если метрики сайта находятся в другом Supabase-проекте, панель честно показывает «нет данных». Следующий этап — безопасная межконтурная агрегация без передачи service-role ключей в браузер.</p></section>
       </section>
 
-      <section id="finance" class="view"><div class="section-placeholder"><h2>Финансы</h2><p>Сюда подключается Точка: остатки, входящие, исходящие, расходы по проектам и прогноз денежного потока.</p></div></section>
+      <section id="finance" class="view">
+        <div class="control-toolbar"><div><p class="eyebrow">Касса</p><h2>Деньги и обязательства</h2><p>Достоверные суммы отделены от показателей, для которых ещё нет источника.</p></div><button id="refreshCash">Обновить</button></div>
+        <div id="cashMetricGrid" class="cash-metric-grid"></div>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Пробелы финансового контура</p><h3>Что пока нельзя считать</h3></div><button class="ghost" data-view-jump="sources">Подключения</button></div><div id="cashUnavailable" class="unavailable-list"></div></section>
+      </section>
+
+      <section id="decisions" class="view">
+        <div class="control-toolbar"><div><p class="eyebrow">Решения</p><h2>Трекер управленческих решений</h2><p>Контур заложен в модели данных. Полный редактор — следующая итерация.</p></div></div>
+        <div id="decisionSummary" class="decision-metric-grid"></div>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Активные решения</p><h3>Гипотезы и контрольные review</h3></div><span>архитектура P2</span></div><div id="decisionList" class="decision-list"></div></section>
+      </section>
       <section id="data" class="view"><div class="panel"><div class="panel-head"><div><p class="eyebrow">Аудит измеримости</p><h3>Каких данных не хватает сейчас</h3></div><span id="coverageLabel"></span></div><div id="dataAudit"></div></div></section>
       <section id="sources" class="view"><article class="panel source-intro"><div><p class="eyebrow">Интеграционный слой</p><h2>Источники данных</h2><p>Панель проверяет доступность Supabase Edge Functions. Секреты сервисов никогда не хранятся в браузере или репозитории.</p></div><button id="refreshSources">Обновить статусы</button></article><div id="sourceNotice" class="notice"></div><div id="sourcesGrid" class="sources-grid"></div><section class="panel"><div class="panel-head"><div><p class="eyebrow">Операционное управление</p><h3>Пауза и возобновление интеграций</h3></div><span>без показа токенов</span></div><div id="sourceControlGrid" class="integration-control-grid"></div></section><section class="panel diagnostics-panel"><div class="panel-head"><div><p class="eyebrow">Диагностика</p><h3>Файлы интерфейса и аналитические функции</h3></div><div class="diagnostic-actions"><span id="diagnosticsSummary">проверка…</span><button class="ghost" id="runDiagnostics">Проверить снова</button></div></div><div id="runtimeDiagnostics"></div></section></section>
     </main>
@@ -115,6 +168,7 @@
   <script src="sales-cycle.js"></script>
   <script src="sales-flow.js"></script>
   <script src="production.js"></script>
+  <script src="ceo-dashboard.js"></script>
   <script src="control.js"></script>
   <script src="diagnostics.js"></script>
 </body>

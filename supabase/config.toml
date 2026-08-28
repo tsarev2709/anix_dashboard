@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.production-summary]
 verify_jwt = true
+
+[functions.ceo-digest]
+verify_jwt = true

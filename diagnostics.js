@@ -1,8 +1,8 @@
 (() => {
   const q = selector => document.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  const resources = ['auth.css', 'styles.css', 'sales-activity.css', 'sales-cycle.css', 'production.css', 'control.css', 'runtime-config.js', 'auth.js', 'app.js', 'sales-history.js', 'sales-cycle.js', 'sales-flow.js', 'production.js', 'control.js', 'diagnostics.js'];
-  const functions = ['source-status', 'sales-summary', 'sales-history', 'sales-cycle', 'production-summary', 'control-center'];
+  const resources = ['auth.css', 'styles.css', 'sales-activity.css', 'sales-cycle.css', 'production.css', 'ceo-dashboard.css', 'control.css', 'runtime-config.js', 'auth.js', 'app.js', 'sales-history.js', 'sales-cycle.js', 'sales-flow.js', 'production.js', 'ceo-dashboard.js', 'control.js', 'diagnostics.js'];
+  const functions = ['source-status', 'sales-summary', 'sales-history', 'sales-cycle', 'production-summary', 'ceo-digest', 'control-center'];
 
   const row = item => `<div class="diagnostic-row ${item.ok ? 'ok' : 'error'}"><div><strong>${esc(item.name)}</strong><small>${esc(item.kind)}</small></div><span>${esc(item.status)}</span><p>${esc(item.detail || '')}</p></div>`;
 
