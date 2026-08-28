@@ -1,25 +1,14 @@
 const snapshot = {
   generatedAt: new Date().toISOString(),
-  statuses: [
-    { name: 'Продажи', status: 'green', note: 'amoCRM подключена' },
-    { name: 'Производство', status: 'yellow', note: 'Не видна загрузка' },
-    { name: 'Финансы', status: 'yellow', note: 'Пока вручную' },
-    { name: 'Команда', status: 'red', note: 'Нет фактических часов' },
-    { name: 'Маркетинг', status: 'red', note: 'Системы пока нет' }
-  ],
+  statuses: [],
   metrics: [
     { label: 'Открытых сделок', value: '—', delta: 'загрузка из amoCRM', direction: 'up' },
     { label: 'Объём воронки', value: '—', delta: 'загрузка из amoCRM', direction: 'up' },
-    { label: 'Активные проекты', value: '4', delta: 'демо до подключения YouGile', direction: 'down' },
+    { label: 'Активные проекты', value: '—', delta: 'загрузка из YouGile', direction: 'down' },
     { label: 'Денег на счетах', value: '—', delta: 'подключим Точку', direction: 'down' }
   ],
   funnel: [{ label: 'Загрузка…', value: 1 }],
-  projects: [
-    { name: 'Авиандр', meta: 'финализация', progress: 82, status: 'yellow', label: 'риск' },
-    { name: 'РЧК', meta: 'препродакшн', progress: 54, status: 'green', label: 'по плану' },
-    { name: 'Мултон LMS', meta: 'разработка', progress: 68, status: 'green', label: 'по плану' },
-    { name: 'Сиреневый туман', meta: 'питчдек', progress: 36, status: 'red', label: 'горит' }
-  ],
+  projects: [],
   dataAudit: [
     { metric: 'Выручка и остаток денег', status: 'manual', label: 'Вручную', reason: 'Можно считать, но пока нет автоматической загрузки из Точки.' },
     { metric: 'Воронка продаж', status: 'measured', label: 'Измеряем', reason: 'amoCRM подключена и синхронизируется автоматически.' },
@@ -52,26 +41,31 @@ const planValue = item => item.isMoney ? money(item.plan) : `${number(item.plan)
 const stageLabel = item => item.pipeline_name ? `${item.pipeline_name} → ${item.status_name || item.name || 'Этап'}` : (item.status_name || item.name || 'Этап не определён');
 
 function renderOverview() {
-  qs('#statusGrid').innerHTML = snapshot.statuses.map(item => `<article class="status-card"><div class="status-row"><strong>${esc(item.name)}</strong><span class="dot ${item.status}"></span></div><small>${esc(item.note)}</small></article>`).join('');
-  qs('#metricGrid').innerHTML = snapshot.metrics.map(item => `<article class="metric-card"><small>${esc(item.label)}</small><strong>${esc(item.value)}</strong><span class="delta ${item.direction}">${esc(item.delta)}</span></article>`).join('');
+  const statusGrid = qs('#statusGrid');
+  const metricGrid = qs('#metricGrid');
+  const funnel = qs('#funnel');
+  if (!statusGrid || !metricGrid || !funnel) return;
+  statusGrid.innerHTML = snapshot.statuses.map(item => `<article class="status-card"><div class="status-row"><strong>${esc(item.name)}</strong><span class="dot ${item.status}"></span></div><small>${esc(item.note)}</small></article>`).join('');
+  metricGrid.innerHTML = snapshot.metrics.map(item => `<article class="metric-card"><small>${esc(item.label)}</small><strong>${esc(item.value)}</strong><span class="delta ${item.direction}">${esc(item.delta)}</span></article>`).join('');
   const maxFunnel = Math.max(1, ...snapshot.funnel.map(x => x.value));
-  qs('#funnel').innerHTML = snapshot.funnel.map(item => `<div class="funnel-row"><strong>${esc(item.label)}</strong><div class="bar"><i style="width:${Math.max(5, item.value / maxFunnel * 100)}%"></i></div><span>${number(item.value)}</span></div>`).join('');
+  funnel.innerHTML = snapshot.funnel.map(item => `<div class="funnel-row"><strong>${esc(item.label)}</strong><div class="bar"><i style="width:${Math.max(5, item.value / maxFunnel * 100)}%"></i></div><span>${number(item.value)}</span></div>`).join('');
 }
 
 renderOverview();
-qs('#projects').innerHTML = snapshot.projects.map(item => `<div class="project-row"><div><strong>${esc(item.name)}</strong><div class="project-meta">${esc(item.meta)}</div></div><div class="bar"><i style="width:${item.progress}%"></i></div><span class="pill ${item.status}">${esc(item.label)}</span></div>`).join('');
-qs('#missingPreview').innerHTML = snapshot.dataAudit.filter(x => x.status === 'missing').slice(0, 3).map(item => `<article class="missing-card"><strong>${esc(item.metric)}</strong><p>${esc(item.reason)}</p></article>`).join('');
+if (qs('#projects')) qs('#projects').innerHTML = snapshot.projects.map(item => `<div class="project-row"><div><strong>${esc(item.name)}</strong><div class="project-meta">${esc(item.meta)}</div></div><div class="bar"><i style="width:${item.progress}%"></i></div><span class="pill ${item.status}">${esc(item.label)}</span></div>`).join('');
+if (qs('#missingPreview')) qs('#missingPreview').innerHTML = snapshot.dataAudit.filter(x => x.status === 'missing').slice(0, 3).map(item => `<article class="missing-card"><strong>${esc(item.metric)}</strong><p>${esc(item.reason)}</p></article>`).join('');
 const measuredCount = snapshot.dataAudit.filter(x => x.status === 'measured').length;
 const manualCount = snapshot.dataAudit.filter(x => x.status === 'manual').length;
 qs('#coverageLabel').textContent = `Покрытие данных: ${Math.round((measuredCount + manualCount * .5) / snapshot.dataAudit.length * 100)}%`;
 qs('#dataAudit').innerHTML = snapshot.dataAudit.map(item => `<div class="audit-row"><strong>${esc(item.metric)}</strong><span class="audit-status ${item.status}">${esc(item.label)}</span><p>${esc(item.reason)}</p></div>`).join('');
 
-const titles = { overview: 'Обзор компании', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Производство', finance: 'Финансы', data: 'Качество данных', sources: 'Интеграции' };
+const titles = { overview: 'Сегодня', weekly: 'Неделя', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Проекты', finance: 'Касса', decisions: 'Решения', data: 'Качество данных', sources: 'Интеграции' };
 function switchView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === view));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
   qs('#page-title').textContent = titles[view];
 }
+window.ANIX_NAVIGATE = switchView;
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
 document.querySelectorAll('[data-view-jump]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.viewJump)));
 
@@ -175,7 +169,7 @@ function renderSales(payload) {
 
   qs('#salesMissingData').innerHTML = missing_data.map(item => `<article class="missing-card priority-${item.priority}"><strong>${esc(item.metric)}</strong><p>${esc(item.reason)}</p></article>`).join('');
   qs('#salesUpdated').textContent = source?.last_success_at ? `синхронизация ${dateTime(source.last_success_at)}` : `срез ${dateTime(generated_at)}`;
-  qs('#overviewSalesUpdated').textContent = source?.last_success_at ? dateTime(source.last_success_at) : 'amoCRM';
+  if (qs('#overviewSalesUpdated')) qs('#overviewSalesUpdated').textContent = source?.last_success_at ? dateTime(source.last_success_at) : 'amoCRM';
   qs('#salesNotice').textContent = 'Импортированная база отделена от фактических действий продавца. Касания и звонки считаются по выполненным задачам, этапные KPI — по реальным переходам в amoCRM.';
 
   snapshot.metrics[0] = { label: 'Открытых сделок', value: String(summary.open_leads), delta: `${summary.completed_tasks_month} выполненных задач в месяце`, direction: 'up' };
@@ -205,7 +199,8 @@ qs('#refreshSales').addEventListener('click', loadSales);
 loadSources();
 loadSales();
 qs('#exportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  const exportSnapshot = { ...snapshot, generatedAt: new Date().toISOString(), ceo: window.ANIX_CEO_SNAPSHOT || null };
+  const blob = new Blob([JSON.stringify(exportSnapshot, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

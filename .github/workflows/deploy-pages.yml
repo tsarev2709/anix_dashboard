@@ -40,6 +40,8 @@ jobs:
           test -f sales-flow.js
           test -f production.css
           test -f production.js
+          test -f ceo-dashboard.css
+          test -f ceo-dashboard.js
           test -f control.css
           test -f control.js
           test -f diagnostics.js
@@ -75,6 +77,8 @@ jobs:
           test -s dist/sales-flow.js
           test -s dist/production.css
           test -s dist/production.js
+          test -s dist/ceo-dashboard.css
+          test -s dist/ceo-dashboard.js
           test -s dist/control.css
           test -s dist/control.js
           test -s dist/diagnostics.js
