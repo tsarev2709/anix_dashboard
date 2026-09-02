@@ -1,0 +1,82 @@
+name: Monitor dashboard production
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_run:
+    workflows:
+      - Build and deploy GitHub Pages
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-production-health
+  cancel-in-progress: true
+
+jobs:
+  health:
+    name: Check DNS and HTTPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve production domain
+        id: dns
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          domain='dashboard.anix-ai.pro'
+          report_file="$RUNNER_TEMP/dns-report.txt"
+          resolved=false
+
+          for record_type in CNAME A AAAA; do
+            response=$(curl --fail --silent --show-error --retry 2 --max-time 15 \
+              "https://dns.google/resolve?name=${domain}&type=${record_type}")
+            status=$(jq -r '.Status // -1' <<< "$response")
+            answers=$(jq -r '[.Answer[]? | .data] | join(", ")' <<< "$response")
+            printf '%s: status=%s answers=%s\n' "$record_type" "$status" "${answers:-none}" | tee -a "$report_file"
+            if [[ "$status" == '0' && -n "$answers" ]]; then
+              resolved=true
+            fi
+          done
+
+          {
+            echo '### DNS dashboard.anix-ai.pro'
+            echo '```text'
+            cat "$report_file"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$resolved" != 'true' ]]; then
+            echo '::error title=Dashboard DNS is unavailable::dashboard.anix-ai.pro has no public CNAME, A or AAAA answer'
+            exit 1
+          fi
+
+      - name: Verify production HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          url='https://dashboard.anix-ai.pro/'
+          headers="$RUNNER_TEMP/dashboard-headers.txt"
+          body="$RUNNER_TEMP/dashboard-index.html"
+          http_code=$(curl --fail --silent --show-error --location --retry 2 \
+            --connect-timeout 10 --max-time 30 \
+            --dump-header "$headers" --output "$body" --write-out '%{http_code}' "$url")
+
+          content_type=$(awk 'BEGIN { IGNORECASE=1 } /^content-type:/ { value=$0 } END { sub(/^[^:]+:[[:space:]]*/, "", value); gsub(/\r/, "", value); print value }' "$headers")
+          title=$(sed -n 's:.*<title>\([^<]*\)</title>.*:\1:p' "$body" | head -n 1)
+
+          {
+            echo '### HTTPS dashboard.anix-ai.pro'
+            echo "- HTTP: ${http_code}"
+            echo "- Content-Type: ${content_type:-unknown}"
+            echo "- Title: ${title:-not found}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          test "$http_code" = '200'
+          grep -qi '<!doctype html' "$body"
