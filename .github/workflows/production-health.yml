@@ -1,6 +1,12 @@
 name: Monitor dashboard production
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/production-health.yml'
+      - 'CNAME'
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
