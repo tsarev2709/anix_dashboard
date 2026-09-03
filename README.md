@@ -13,6 +13,7 @@
 - экспорт текущего среза в JSON для дальнейшего анализа и изменения модели метрик;
 - Anix Control: черновики контента, версии, feature flags, управление интеграциями и метрики сайта/AI.
 - CEO-дайджест: управленческие исключения, зависшие сделки, drill-down, здоровье реальных стадий amoCRM, проектные риски и недельные сравнения.
+- постановка задач из Telegram в YouGile по реакции 📌 с нормализацией через Anix LLM.
 
 ## Как открыть
 
@@ -37,6 +38,8 @@
 - `supabase/functions/ceo-digest` — единый агрегирующий API поверх amoCRM и YouGile.
 
 Архитектура, правила алертов, метрики и ограничения описаны в [`docs/ceo-operating-dashboard.md`](docs/ceo-operating-dashboard.md).
+
+Подключение Telegram-бота описано в [`docs/telegram-task-capture.md`](docs/telegram-task-capture.md).
 
 
 ## Anix Control

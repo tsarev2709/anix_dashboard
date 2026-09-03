@@ -47,6 +47,7 @@ jobs:
             supabase/migrations/20260723_090000_dashboard_security.sql
             supabase/migrations/202608140001_anix_control.sql
             supabase/migrations/202608280001_ceo_operating_dashboard.sql
+            supabase/migrations/202609030001_telegram_task_capture.sql
           )
 
           for migration in "${migrations[@]}"; do
@@ -74,8 +75,65 @@ jobs:
             fi
           done
 
+      - name: Configure optional Telegram task capture
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+          YOUGILE_INBOX_COLUMN_ID: ${{ secrets.YOUGILE_INBOX_COLUMN_ID }}
+          YOUGILE_DEFAULT_ASSIGNEE_IDS: ${{ secrets.YOUGILE_DEFAULT_ASSIGNEE_IDS }}
+          YOUGILE_TASK_URL_TEMPLATE: ${{ secrets.YOUGILE_TASK_URL_TEMPLATE }}
+          ANIX_LLM_GATEWAY_SECRET: ${{ secrets.ANIX_LLM_GATEWAY_SECRET }}
+          TELEGRAM_ALLOWED_CHAT_IDS: ${{ secrets.TELEGRAM_ALLOWED_CHAT_IDS }}
+          TELEGRAM_ALLOWED_USER_IDS: ${{ secrets.TELEGRAM_ALLOWED_USER_IDS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "Telegram task capture is not configured; skipping optional setup."
+            exit 0
+          fi
+          test -n "$TELEGRAM_WEBHOOK_SECRET"
+          test -n "$YOUGILE_INBOX_COLUMN_ID"
+          test -n "$ANIX_LLM_GATEWAY_SECRET"
+          case "$TELEGRAM_WEBHOOK_SECRET" in
+            *[!A-Za-z0-9_-]*) echo "TELEGRAM_WEBHOOK_SECRET contains unsupported characters."; exit 1 ;;
+          esac
+          secret_args=(
+            "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
+            "TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET"
+            "YOUGILE_INBOX_COLUMN_ID=$YOUGILE_INBOX_COLUMN_ID"
+            "ANIX_LLM_GATEWAY_SECRET=$ANIX_LLM_GATEWAY_SECRET"
+          )
+          [ -z "$YOUGILE_DEFAULT_ASSIGNEE_IDS" ] || secret_args+=("YOUGILE_DEFAULT_ASSIGNEE_IDS=$YOUGILE_DEFAULT_ASSIGNEE_IDS")
+          [ -z "$YOUGILE_TASK_URL_TEMPLATE" ] || secret_args+=("YOUGILE_TASK_URL_TEMPLATE=$YOUGILE_TASK_URL_TEMPLATE")
+          [ -z "$TELEGRAM_ALLOWED_CHAT_IDS" ] || secret_args+=("TELEGRAM_ALLOWED_CHAT_IDS=$TELEGRAM_ALLOWED_CHAT_IDS")
+          [ -z "$TELEGRAM_ALLOWED_USER_IDS" ] || secret_args+=("TELEGRAM_ALLOWED_USER_IDS=$TELEGRAM_ALLOWED_USER_IDS")
+          supabase secrets set --project-ref "$SUPABASE_PROJECT_ID" "${secret_args[@]}"
+
       - name: Deploy Edge Functions
         run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Register Telegram webhook
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "Telegram task capture is not configured; webhook registration skipped."
+            exit 0
+          fi
+          payload=$(jq -n \
+            --arg url "https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/telegram-task-bot" \
+            --arg secret "$TELEGRAM_WEBHOOK_SECRET" \
+            '{url:$url, secret_token:$secret, allowed_updates:["message","edited_message","message_reaction"], drop_pending_updates:false}')
+          response=$(curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            --data "$payload" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook")
+          test "$(jq -r '.ok' <<<"$response")" = "true"
+          echo "Telegram webhook registered."
 
       - name: Verify anonymous access is blocked
         shell: bash

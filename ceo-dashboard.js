@@ -54,7 +54,7 @@
         <div class="ceo-alert-main"><strong>${esc(alert.title)}</strong><small>${esc(alert.description)}</small></div>
         <div class="ceo-alert-meta"><strong>${esc(alert.object_type)} · ${alert.days !== null ? `${num(alert.days)} дн.` : 'срок не указан'}</strong><small>${esc(alert.owner || 'Ответственный не назначен')}${alert.amount ? ` · ${esc(rub(alert.amount))}` : ''}</small></div>
         <div class="ceo-alert-action"><strong>Следующее действие</strong><small>${esc(alert.next_action)}</small></div>
-        <div class="ceo-alert-buttons"><button type="button" class="ceo-link-button" data-drilldown="${esc(alert.drilldown_key)}">Открыть</button>${alert.external_url ? `<a class="ceo-link-button" href="${esc(alert.external_url)}" target="_blank" rel="noopener">amoCRM ↗</a>` : ''}</div>
+        <div class="ceo-alert-buttons"><button type="button" class="ceo-link-button" data-drilldown="${esc(alert.drilldown_key)}">Открыть</button>${alert.external_url ? `<a class="ceo-link-button" href="${esc(alert.external_url)}" target="_blank" rel="noopener">${alert.domain === 'operations' ? 'Telegram' : 'amoCRM'} ↗</a>` : ''}</div>
       </article>`).join('') : '<div class="ceo-empty">Исключений по доступным данным нет. Финансовый контур пока неполон, поэтому отсутствие финансовых алертов не означает отсутствие обязательств.</div>';
     q('#showAllAlerts').hidden = alerts.length <= 7;
     q('#showAllAlerts').textContent = showAll ? 'Свернуть список' : `Показать приоритетные исключения (${alerts.length} из ${summary.total || alerts.length})`;
@@ -242,6 +242,14 @@
     }
     if (key === 'decisions') {
       window.ANIX_NAVIGATE?.('decisions');
+      return;
+    }
+    if (key === 'telegram_task_failures') {
+      const items = payload.operations?.telegram_task_failures || [];
+      const dialog = ensureDialog();
+      q('#drilldownTitle').textContent = `Недоставленные задачи из Telegram (${items.length})`;
+      q('#drilldownBody').innerHTML = items.length ? `<div style="overflow:auto"><table class="drilldown-table"><thead><tr><th>Сообщение</th><th>Статус</th><th>Когда</th><th>Ошибка</th><th></th></tr></thead><tbody>${items.map(item => `<tr><td><strong>${esc(item.normalized_title || item.original_text || 'Задача')}</strong></td><td>${esc(item.status)}</td><td>${dt(item.created_at)}</td><td>${esc(item.error || 'Обработка длится более 15 минут')}</td><td>${item.source_url ? `<a href="${esc(item.source_url)}" target="_blank" rel="noopener">Telegram ↗</a>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="ceo-empty">Ошибок постановки задач сейчас нет.</div>';
+      dialog.showModal();
       return;
     }
     const labels = {

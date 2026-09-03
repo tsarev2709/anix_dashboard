@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.ceo-digest]
 verify_jwt = true
+
+[functions.telegram-task-bot]
+verify_jwt = false

@@ -70,6 +70,7 @@ Deno.serve(async (req: Request) => {
       pmUsersResult,
       sourcesResult,
       decisionsResult,
+      telegramInboxResult,
       credentialResult,
     ] = await Promise.all([
       db.from('crm_leads').select('external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,raw').eq('source_slug', SOURCE_CRM).limit(10_000),
@@ -84,8 +85,9 @@ Deno.serve(async (req: Request) => {
       db.from('pm_columns').select('external_id,board_external_id,title,position').eq('source_slug', SOURCE_PM).limit(10_000),
       db.from('pm_tasks').select('external_id,title,project_external_id,board_external_id,column_external_id,assigned_user_external_ids,deadline_at,completed,is_archived,created_at_source,updated_at_source,synced_at,raw').eq('source_slug', SOURCE_PM).limit(30_000),
       db.from('pm_users').select('external_id,name,email,is_active').eq('source_slug', SOURCE_PM).limit(5_000),
-      db.from('data_sources').select('slug,status,last_success_at,last_attempt_at,last_error,freshness_minutes').in('slug', [SOURCE_CRM, SOURCE_PM, 'tochka']).limit(10),
+      db.from('data_sources').select('slug,status,last_success_at,last_attempt_at,last_error,freshness_minutes').in('slug', [SOURCE_CRM, SOURCE_PM, 'tochka', 'telegram_tasks']).limit(10),
       db.from('management_decisions').select('id,title,hypothesis,decided_at,owner_name,check_deadline,expected_result,metric_name,actual_result,status,next_review_at,related_entity_type,related_entity_external_id').in('status', ['planned', 'in_progress']).limit(1_000),
+      db.from('telegram_task_inbox').select('id,status,normalized_title,original_text,error,created_at,processed_at,yougile_task_id,source_url').in('status', ['processing', 'failed']).order('created_at', { ascending: false }).limit(1_000),
       db.from('integration_credentials').select('account_domain').eq('source_slug', SOURCE_CRM).maybeSingle(),
     ]);
 
@@ -93,7 +95,7 @@ Deno.serve(async (req: Request) => {
       leadsResult.error, statusesResult.error, pipelinesResult.error, crmUsersResult.error,
       crmTasksResult.error, crmEventsResult.error, stageEventsResult.error,
       pmProjectsResult.error, pmBoardsResult.error, pmColumnsResult.error,
-      pmTasksResult.error, pmUsersResult.error, sourcesResult.error, decisionsResult.error,
+      pmTasksResult.error, pmUsersResult.error, sourcesResult.error, decisionsResult.error, telegramInboxResult.error,
     ];
     for (const error of requiredErrors) if (error) throw error;
 
@@ -108,6 +110,7 @@ Deno.serve(async (req: Request) => {
     const pmColumns: any[] = pmColumnsResult.data || [];
     const pmTasks: any[] = pmTasksResult.data || [];
     const decisions: any[] = decisionsResult.data || [];
+    const telegramInbox: any[] = telegramInboxResult.data || [];
 
     const statusMap = new Map<string, any>(statuses.map((status: any) => [key(status.pipeline_external_id, status.external_id), status]));
     const pipelineMap = new Map<number, any>(pipelines.map((pipeline: any) => [Number(pipeline.external_id), pipeline]));
@@ -475,6 +478,30 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const failedTelegramTasks = telegramInbox.filter(item => item.status === 'failed');
+    const stuckTelegramTasks = telegramInbox.filter(item => item.status === 'processing' && nowMs - ms(item.created_at) > 15 * 60_000);
+    if (failedTelegramTasks.length || stuckTelegramTasks.length) {
+      const oldest = [...failedTelegramTasks, ...stuckTelegramTasks]
+        .sort((a, b) => ms(a.created_at) - ms(b.created_at))[0];
+      alerts.push({
+        id: 'telegram-task-capture-failures',
+        severity: failedTelegramTasks.length ? 'critical' : 'risk',
+        domain: 'operations',
+        title: `${failedTelegramTasks.length + stuckTelegramTasks.length} задач из Telegram не дошли до YouGile`,
+        description: failedTelegramTasks.length
+          ? `Ошибок: ${failedTelegramTasks.length}. Последняя: ${failedTelegramTasks[0]?.error || 'без описания'}`
+          : `${stuckTelegramTasks.length} задач обрабатываются более 15 минут.`,
+        object_type: 'Интеграция',
+        object_name: 'Telegram → YouGile',
+        days: oldest ? daysSince(oldest.created_at, nowMs) : 0,
+        owner: 'Операционный контур',
+        amount: null,
+        next_action: 'Проверить доступность LLM и ключ YouGile, затем повторить постановку задачи.',
+        drilldown_key: 'telegram_task_failures',
+        external_url: oldest?.source_url || null,
+      });
+    }
+
     if (previousMetrics) {
       const staleChange = compare('stalled_14_ratio');
       if (Number(staleChange.absolute_change || 0) >= .1 && stale14.length >= 2) alerts.push({
@@ -532,6 +559,7 @@ Deno.serve(async (req: Request) => {
         amocrm: sourceMap.get(SOURCE_CRM) || null,
         yougile: sourceMap.get(SOURCE_PM) || null,
         tochka: sourceMap.get('tochka') || null,
+        telegram_tasks: sourceMap.get('telegram_tasks') || null,
       },
       alert_summary: {
         total: alerts.length,
@@ -610,6 +638,9 @@ Deno.serve(async (req: Request) => {
           return reviewAt && ms(reviewAt) < nowMs;
         }).length,
         items: decisions,
+      },
+      operations: {
+        telegram_task_failures: [...failedTelegramTasks, ...stuckTelegramTasks],
       },
       data_quality: {
         unavailable,
