@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.telegram-task-bot]
 verify_jwt = false
+
+[functions.sales-forecast]
+verify_jwt = true

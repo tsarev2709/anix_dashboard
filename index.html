@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="production.css" />
   <link rel="stylesheet" href="ceo-dashboard.css" />
   <link rel="stylesheet" href="control.css" />
+  <link rel="stylesheet" href="sales-forecast.css" />
 </head>
 <body class="auth-locked">
   <div class="shell">
@@ -23,6 +24,7 @@
         <button class="nav-item active" data-view="overview">Сегодня</button>
         <button class="nav-item" data-view="weekly">Неделя</button>
         <button class="nav-item" data-view="sales">Продажи</button>
+        <button class="nav-item" data-view="forecast">Прогноз месяца</button>
         <button class="nav-item" data-view="production">Проекты</button>
         <button class="nav-item" data-view="finance">Касса</button>
         <button class="nav-item" data-view="decisions">Решения</button>
@@ -40,6 +42,8 @@
         <div><p class="eyebrow">Центр управления бизнесом</p><h1 id="page-title">Обзор компании</h1></div>
         <div class="header-actions"><span class="sync" id="globalSync">● Загружаю данные</span><button id="exportBtn">Скачать срез JSON</button></div>
       </header>
+
+      <section id="forecast" class="view" data-sales-forecast="full"></section>
 
       <section id="overview" class="view active">
         <section class="ceo-heading">
@@ -171,5 +175,6 @@
   <script src="ceo-dashboard.js"></script>
   <script src="control.js"></script>
   <script src="diagnostics.js"></script>
+  <script src="sales-forecast.js"></script>
 </body>
 </html>

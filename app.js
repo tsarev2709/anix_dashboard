@@ -59,7 +59,7 @@ const manualCount = snapshot.dataAudit.filter(x => x.status === 'manual').length
 qs('#coverageLabel').textContent = `Покрытие данных: ${Math.round((measuredCount + manualCount * .5) / snapshot.dataAudit.length * 100)}%`;
 qs('#dataAudit').innerHTML = snapshot.dataAudit.map(item => `<div class="audit-row"><strong>${esc(item.metric)}</strong><span class="audit-status ${item.status}">${esc(item.label)}</span><p>${esc(item.reason)}</p></div>`).join('');
 
-const titles = { overview: 'Сегодня', weekly: 'Неделя', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Проекты', finance: 'Касса', decisions: 'Решения', data: 'Качество данных', sources: 'Интеграции' };
+const titles = { forecast: 'Прогноз месяца', overview: 'Сегодня', weekly: 'Неделя', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Проекты', finance: 'Касса', decisions: 'Решения', data: 'Качество данных', sources: 'Интеграции' };
 function switchView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === view));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
@@ -199,7 +199,7 @@ qs('#refreshSales').addEventListener('click', loadSales);
 loadSources();
 loadSales();
 qs('#exportBtn').addEventListener('click', () => {
-  const exportSnapshot = { ...snapshot, generatedAt: new Date().toISOString(), ceo: window.ANIX_CEO_SNAPSHOT || null };
+  const exportSnapshot = { ...snapshot, generatedAt: new Date().toISOString(), ceo: window.ANIX_CEO_SNAPSHOT || null, forecast: window.ANIX_FORECAST_SNAPSHOT || null };
   const blob = new Blob([JSON.stringify(exportSnapshot, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');

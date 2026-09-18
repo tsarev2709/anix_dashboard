@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveCloseField, extractCloseDate } from '../_shared/forecast-fields.mjs';
+import { captureForecastSnapshots } from '../_shared/forecast-data.ts';
 
 const headers = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -69,11 +71,31 @@ Deno.serve(async req => {
     await upsert('crm_pipelines', pipelineRows);
     await upsert('crm_statuses', statusRows);
 
+    const { data: forecastSettings, error: settingsError } = await db.from('crm_forecast_settings').select('*').eq('source_slug', 'amocrm').single();
+    if (settingsError) throw settingsError;
+    const metadata = async (path: string, embedded: string) => {
+      const all: any[] = [];
+      for (let page = 1; page <= 100; page++) {
+        const body = await api(`${path}?limit=250&page=${page}`);
+        all.push(...(body?._embedded?.[embedded] || []));
+        if (!body?._links?.next) return all;
+      }
+      throw new Error(`${path}: pagination limit reached`);
+    };
+    const customFields = await metadata('/api/v4/leads/custom_fields', 'custom_fields');
+    const lossReasons = await metadata('/api/v4/leads/loss_reasons', 'loss_reasons');
+    const metadataAt = new Date().toISOString();
+    await upsert('crm_lead_custom_fields', customFields.map(f => ({ source_slug: 'amocrm', external_id: f.id, name: f.name, code: f.code, field_type: f.type, synced_at: metadataAt })));
+    await upsert('crm_loss_reasons', lossReasons.map(r => ({ source_slug: 'amocrm', external_id: r.id, name: r.name, synced_at: metadataAt })));
+    const closeField = resolveCloseField(customFields, forecastSettings.expected_close_field_id);
+    const { error: metadataError } = await db.from('crm_forecast_settings').update({ field_state: closeField, metadata_synced_at: metadataAt }).eq('source_slug', 'amocrm');
+    if (metadataError) throw metadataError;
+
     let usersRead = 0;
     for (let page = 1; page <= 20; page++) {
       const body = await api(`/api/v4/users?limit=250&page=${page}`); const users = body?._embedded?.users || []; if (!users.length) break;
       const rows = dedupe(users.map((u: any) => ({ source_slug: 'amocrm', external_id: u.id, name: u.name || `Пользователь #${u.id}`, email: u.email || null, is_admin: Boolean(u.rights?.is_admin), is_active: u.rights?.is_active !== false, raw: u, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_users');
-      usersRead += rows.length; await upsert('crm_users', rows); if (!body?._links?.next) break;
+      usersRead += rows.length; await upsert('crm_users', rows); if (!body?._links?.next) break; if (page === 20) throw new Error('amoCRM pagination limit reached');
     }
 
     let recordsRead = 0, recordsWritten = 0, transitionsWritten = 0;
@@ -83,11 +105,11 @@ Deno.serve(async req => {
       const ids = leads.map((l: any) => l.id);
       const { data: existing, error } = await db.from('crm_leads').select('external_id,status_external_id,pipeline_external_id').in('external_id', ids).eq('source_slug', 'amocrm'); if (error) throw error;
       const old = new Map((existing || []).map((x: any) => [x.external_id, x]));
-      const rows = dedupe(leads.map((l: any) => ({ source_slug: 'amocrm', external_id: l.id, name: l.name, price: l.price || 0, pipeline_external_id: l.pipeline_id, status_external_id: l.status_id, responsible_user_external_id: l.responsible_user_id, created_at_source: iso(l.created_at), updated_at_source: iso(l.updated_at), closed_at_source: iso(l.closed_at), loss_reason_external_id: l.loss_reason_id, raw: l, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_leads');
+      const rows = dedupe(leads.map((l: any) => ({ source_slug: 'amocrm', external_id: l.id, name: l.name, price: l.price || 0, pipeline_external_id: l.pipeline_id, status_external_id: l.status_id, responsible_user_external_id: l.responsible_user_id, created_at_source: iso(l.created_at), updated_at_source: iso(l.updated_at), closed_at_source: iso(l.closed_at), loss_reason_external_id: l.loss_reason_id, expected_close_date: extractCloseDate(l, closeField.id, forecastSettings.timezone).date, expected_close_date_invalid: extractCloseDate(l, closeField.id, forecastSettings.timezone).invalid, raw: l, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_leads');
       await upsert('crm_leads', rows); recordsWritten += rows.length;
       const changes = rows.filter((l: any) => !old.has(l.external_id) || old.get(l.external_id)?.status_external_id !== l.status_external_id || old.get(l.external_id)?.pipeline_external_id !== l.pipeline_external_id).map((l: any) => ({ source_slug: 'amocrm', lead_external_id: l.external_id, pipeline_external_id: l.pipeline_external_id, status_external_id: l.status_external_id, observed_at: l.updated_at_source || new Date().toISOString() }));
       if (changes.length) { const { error: e } = await db.from('crm_lead_stage_events').insert(changes); if (e) throw e; transitionsWritten += changes.length; }
-      if (!body?._links?.next) break;
+      if (!body?._links?.next) break; if (page === 100) throw new Error('amoCRM pagination limit reached');
     }
 
     const from = source.last_success_at ? Math.floor((new Date(source.last_success_at).getTime() - 2 * 86400000) / 1000) : Math.floor((Date.now() - 180 * 86400000) / 1000);
@@ -95,21 +117,22 @@ Deno.serve(async req => {
     for (let page = 1; page <= 100; page++) {
       const body = await api(`/api/v4/tasks?limit=250&page=${page}&filter[updated_at][from]=${from}&order[updated_at]=asc`); const tasks = body?._embedded?.tasks || []; if (!tasks.length) break;
       const rows = dedupe(tasks.map((t: any) => ({ source_slug: 'amocrm', external_id: t.id, entity_external_id: t.entity_id || null, entity_type: t.entity_type || null, responsible_user_external_id: t.responsible_user_id || null, created_by_external_id: t.created_by || null, updated_by_external_id: t.updated_by || null, task_type_id: t.task_type_id || null, text: t.text || null, result_text: resultText(t.result), is_completed: Boolean(t.is_completed), complete_till: iso(t.complete_till), created_at_source: iso(t.created_at), updated_at_source: iso(t.updated_at), raw: t, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_tasks');
-      tasksRead += rows.length; await upsert('crm_tasks', rows); if (!body?._links?.next) break;
+      tasksRead += rows.length; await upsert('crm_tasks', rows); if (!body?._links?.next) break; if (page === 100) throw new Error('amoCRM pagination limit reached');
     }
 
     let eventsRead = 0;
     for (let page = 1; page <= 100; page++) {
       const body = await api(`/api/v4/events?limit=100&page=${page}&filter[created_at][from]=${from}&filter[entity][]=lead&filter[entity][]=task&with=lead_name`); const events = body?._embedded?.events || []; if (!events.length) break;
       const rows = dedupe(events.map((e: any) => ({ source_slug: 'amocrm', external_id: String(e.id), event_type: e.type || 'unknown', entity_external_id: e.entity_id || null, entity_type: e.entity_type || null, created_by_external_id: e.created_by || null, created_at_source: iso(e.created_at) || new Date().toISOString(), value_before: e.value_before || [], value_after: e.value_after || [], raw: e, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_events');
-      eventsRead += rows.length; await upsert('crm_events', rows); if (!body?._links?.next) break;
+      eventsRead += rows.length; await upsert('crm_events', rows); if (!body?._links?.next) break; if (page === 100) throw new Error('amoCRM pagination limit reached');
     }
 
+    const forecastSnapshots = await captureForecastSnapshots(db);
     const read = recordsRead + usersRead + pipelineRows.length + rawStatuses.length + tasksRead + eventsRead;
     const written = recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten + tasksRead + eventsRead;
     await db.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: read, records_written: written }).eq('id', runId);
     await db.from('data_sources').update({ status: 'healthy', last_success_at: new Date().toISOString(), last_attempt_at: new Date().toISOString(), last_error: null }).eq('slug', 'amocrm');
-    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: rawStatuses.length, statusesWritten: statusRows.length, duplicateStatusesCollapsed: rawStatuses.length - statusRows.length, transitionsWritten, tasksRead, eventsRead }), { headers });
+    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: rawStatuses.length, statusesWritten: statusRows.length, duplicateStatusesCollapsed: rawStatuses.length - statusRows.length, transitionsWritten, tasksRead, eventsRead, forecastSnapshots, expectedCloseField: closeField }), { headers });
   } catch (error) {
     if (runId) await db.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: String(error) }).eq('id', runId);
     await db.from('data_sources').update({ status: 'error', last_attempt_at: new Date().toISOString(), last_error: String(error) }).eq('slug', 'amocrm');
