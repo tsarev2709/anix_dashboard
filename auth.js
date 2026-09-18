@@ -42,7 +42,7 @@
       const raw = sessionStorage.getItem(storageKey);
       return raw ? JSON.parse(raw) : null;
     } catch {
-      sessionStorage.removeItem(storageKey);
+      try { sessionStorage.removeItem(storageKey); } catch {}
       return null;
     }
   };
@@ -52,13 +52,14 @@
       ...session,
       started_at: Number(session.started_at || Date.now()),
     };
-    sessionStorage.setItem(storageKey, JSON.stringify(normalized));
+    // Embedded browsers can block storage. Keep this session in memory in that case.
+    try { sessionStorage.setItem(storageKey, JSON.stringify(normalized)); } catch {}
     return normalized;
   };
 
   const clearSession = () => {
     activeSession = null;
-    sessionStorage.removeItem(storageKey);
+    try { sessionStorage.removeItem(storageKey); } catch {}
   };
 
   const jwtExpiryMs = token => {

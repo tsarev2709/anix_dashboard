@@ -45,3 +45,8 @@
 ## Anix Control
 
 Архитектура, границы первого релиза и план публикационного контура описаны в [`docs/anix-control.md`](docs/anix-control.md).
+
+## Прогноз продаж
+
+Месячный экран `index.html#forecast` и компактная страница `amo-forecast.html`.
+Расчёт, ограничения и порядок запуска: [docs/sales-forecast.md](docs/sales-forecast.md).

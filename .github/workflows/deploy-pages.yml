@@ -24,6 +24,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Check required files
         run: |
           test -f index.html
@@ -45,6 +50,9 @@ jobs:
           test -f control.css
           test -f control.js
           test -f diagnostics.js
+          test -f sales-forecast.js
+          test -f sales-forecast.css
+          test -f amo-forecast.html
 
       - name: Check JavaScript syntax
         run: |
@@ -52,6 +60,9 @@ jobs:
             echo "Checking $file"
             node --check "$file"
           done
+
+      - name: Test sales forecast calculations
+        run: node --test tests/*.test.mjs
 
       - name: Build static site directory
         run: |
