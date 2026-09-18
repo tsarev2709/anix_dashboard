@@ -92,3 +92,24 @@ test('date normalization preserves business dates and rejects invalid dates', ()
   assert.deepEqual(extractCloseDate(data, 43, 'Europe/Moscow'), { date: null, invalid: false });
 });
 test('rejects malformed month', () => { for (const month of ['2026-00', '2026-13', '26-01', '2026-09-01', '2026-9']) assert.equal(validMonth(month), false); });
+test('lightweight daily snapshots match full report totals and coverage in every scope', () => {
+  const data = fixture();
+  data.leads.push(lead(5, { responsible_user_external_id: null, price: 12.35, status_external_id: 701 }), lead(6, { pipeline_external_id: 20, expected_close_date: null }));
+  data.tasks = [{ entity_type: 'leads', entity_external_id: 1, is_completed: false }];
+  data.events = [{ entity_type: 'lead', entity_external_id: 1, created_at_source: '2026-09-18T01:00:00Z' }];
+  data.stages = [{ lead_external_id: 2, pipeline_external_id: 10, status_external_id: 700, observed_at: '2026-08-20T00:00:00Z' }];
+  for (const fieldState of ['ready', 'missing']) {
+    data.settings.field_state.state = fieldState;
+    const probabilities = stageProbabilities(data);
+    for (const month of ['2026-09', '2026-10']) for (const manager of [0, -1, 3]) for (const pipeline of [0, 10, 20, 99]) {
+      const options = { month, manager, pipeline, now };
+      const full = buildForecast(data, options);
+      const snapshot = buildForecast({ ...data, events: [] }, { ...options, snapshot: true }, probabilities);
+      assert.deepEqual(snapshot.forecast, full.forecast);
+      assert.deepEqual(snapshot.quality, full.quality);
+      assert.equal(snapshot.actual.amount, full.actual.amount);
+      assert.equal(snapshot.actual.open_deals_count, full.actual.open_deals_count);
+      assert.equal(snapshot.deals.length, full.deals.length);
+    }
+  }
+});

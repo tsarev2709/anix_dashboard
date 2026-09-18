@@ -1,4 +1,4 @@
-import { buildForecast } from './sales-forecast.mjs';
+import { buildForecast, stageProbabilities } from './sales-forecast.mjs';
 import { calendarDate } from './forecast-fields.mjs';
 
 // Keyset pagination avoids silently truncating at PostgREST's default 1,000 rows.
@@ -16,13 +16,13 @@ export async function readAll(db: any, table: string, columns: string, order = '
   }
   throw new Error(`${table}: pagination limit reached; refusing incomplete forecast`);
 }
-export async function loadForecastData(db: any) {
+export async function loadForecastData(db: any, snapshot = false) {
   const [leads, pipelines, users, tasks, events, stages, lossReasons, config, source, account] = await Promise.all([
     readAll(db, 'crm_leads', 'external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,loss_reason_external_id,expected_close_date,expected_close_date_invalid'),
     readAll(db, 'crm_pipelines', 'external_id,name,raw'),
     readAll(db, 'crm_users', 'external_id,name'),
     readAll(db, 'crm_tasks', 'external_id,entity_external_id,entity_type,responsible_user_external_id,text,is_completed,complete_till,created_at_source,updated_at_source'),
-    readAll(db, 'crm_events', 'external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source'),
+    snapshot ? Promise.resolve([]) : readAll(db, 'crm_events', 'external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source'),
     readAll(db, 'crm_lead_stage_events', 'id,lead_external_id,pipeline_external_id,status_external_id,observed_at', 'id'),
     readAll(db, 'crm_loss_reasons', 'external_id,name'),
     db.from('crm_forecast_settings').select('*').eq('source_slug', 'amocrm').single(),
@@ -44,7 +44,8 @@ export async function captureForecastSnapshots(db: any, now = new Date()) {
   if (settingsError) throw settingsError;
   const snapshotDate = calendarDate(now.toISOString(), settings.timezone)!;
   if (settings.last_snapshot_date === snapshotDate) return 0;
-  const data = await loadForecastData(db);
+  const data = await loadForecastData(db, true);
+  const probabilities = stageProbabilities(data);
   const currentMonth = snapshotDate.slice(0, 7);
   const months = new Set([currentMonth, ...data.leads.filter(l => l.expected_close_date && l.expected_close_date.slice(0, 7) >= currentMonth).map(l => l.expected_close_date.slice(0, 7))]);
   const scopes = new Map<string, { manager: number; pipeline: number }>();
@@ -56,7 +57,7 @@ export async function captureForecastSnapshots(db: any, now = new Date()) {
   let written = 0;
   for (const month of months) {
     const rows = [...scopes.values()].map(scope => {
-      const result = buildForecast(data, { month, ...scope, now });
+      const result = buildForecast(data, { month, ...scope, now, snapshot: true }, probabilities);
       return { source_slug: 'amocrm', snapshot_date: snapshotDate, forecast_month: `${month}-01`,
         manager_external_id: scope.manager, pipeline_external_id: scope.pipeline, captured_at: now.toISOString(),
         fact_amount: result.actual.amount, weighted_forecast_amount: result.forecast.weighted_forecast_amount,

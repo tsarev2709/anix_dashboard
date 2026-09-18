@@ -1,5 +1,6 @@
 // amoCRM date fields accept Unix seconds or RFC3339. Calendar days use account timezone.
 export const normalizeName = value => String(value ?? '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+const dateFormatters = new Map();
 export function calendarDate(value, timezone = 'Europe/Moscow') {
   if (value === null || value === undefined || value === '' || value === 0) return null;
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -9,7 +10,12 @@ export function calendarDate(value, timezone = 'Europe/Moscow') {
   if (typeof value === 'string' && !/^\d+$/.test(value) && !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
   const date = new Date(typeof value === 'number' || /^\d+$/.test(String(value)) ? Number(value) * 1000 : value);
   if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1970 || date.getUTCFullYear() > 2200) return null;
-  return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  let formatter = dateFormatters.get(timezone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    dateFormatters.set(timezone, formatter);
+  }
+  return formatter.format(date);
 }
 export function resolveCloseField(fields, configuredId = null) {
   const names = new Set(['потенциальная дата сделки', 'плановая дата закрытия', 'ожидаемая дата закрытия', 'дата планируемого закрытия']);

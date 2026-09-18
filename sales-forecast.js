@@ -40,6 +40,22 @@
         ] : [
           `${link(l)}<small>${esc(l.manager_name)}</small>`, money(l.price), esc(l.stage_name), `${pct(l.probability)}<small>${esc(sourceName(l.probability_source))}</small>`, money(l.weighted_amount), `${day(l.expected_close_date)}${l.overdue_days ? `<small class="forecast-danger">Просрочена на ${num(l.overdue_days)} дн.</small>` : ''}`, `${esc(l.next_step || 'Нет задачи')}<small>${dateTime(l.next_step_at)}</small>`, num(l.stage_age_days),
         ]), 'На выбранный месяц нет открытых сделок с потенциальной датой.'));
+    if (!compact && field?.state === 'missing') {
+      result.insertAdjacentHTML('afterbegin', '<div class="forecast-warning"><p>В amoCRM нет поля потенциальной даты. Можно добавить отдельное поле типа «Дата»; существующее поле «срок» сохранится.</p><button type="button" class="forecast-connect-date">Добавить дату сделки в amoCRM</button><p class="forecast-setup-status" role="status"></p></div>');
+      const connect = result.querySelector('.forecast-connect-date');
+      connect.addEventListener('click', async () => {
+        connect.disabled = true;
+        const message = result.querySelector('.forecast-setup-status');
+        message.textContent = 'Проверяю поля и подключаю дату…';
+        try {
+          const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'connect_date_field' }) });
+          const body = await response.json();
+          if (!response.ok || !body.ok) throw new Error(body.error || `HTTP ${response.status}`);
+          await load();
+        } catch (error) { message.textContent = `Не удалось подключить: ${error.message}`; connect.disabled = false; }
+      });
+    }
+    if (field?.state === 'awaiting_sync') result.insertAdjacentHTML('afterbegin', '<p class="forecast-warning">Поле подключено. Дождитесь следующей синхронизации amoCRM и заполните даты в нужных сделках.</p>');
     if (compact) return;
     const discipline = [['Без следующего шага', d.without_next_step], ['Просроченные задачи', d.overdue_tasks], ['Просрочена дата сделки', d.overdue_close_date], ['Без даты (все / обязательные)', `${d.without_date} / ${d.required_without_date}`], ['Без активности >14 / >30 дней', `${d.stalled_14} / ${d.stalled_30}`]];
     result.insertAdjacentHTML('beforeend', panel('Где нужно действовать сегодня', `<p class="forecast-hint">Текущее состояние всех открытых сделок выбранного менеджера и воронки.</p><div class="forecast-kpis forecast-secondary">${discipline.map(([label, value]) => card(label, value)).join('')}</div>` + table(['Сделка', 'Что исправить', 'Следующий шаг'], payload.issues.slice(0, 50).map(l => [link(l), esc([l.overdue_days ? `Дата просрочена на ${l.overdue_days} дн.` : '', !l.has_next_step ? 'Нет следующего шага' : '', l.overdue_tasks ? `Просроченных задач: ${l.overdue_tasks}` : '', l.requires_expected_date && !l.expected_close_date ? 'Нужна потенциальная дата' : '', l.invalid_date ? 'Некорректная дата в CRM' : '', l.inactive_days > 14 ? `Нет активности ${l.inactive_days} дн.` : ''].filter(Boolean).join(' · ')), `${esc(l.next_step || '—')}<small>${dateTime(l.next_step_at)}</small>`]), 'Нет исключений.') + (payload.issues.length > 50 ? `<p class="forecast-hint">Показаны первые 50 из ${payload.issues.length} исключений.</p>` : '')));

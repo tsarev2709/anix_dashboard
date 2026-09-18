@@ -88,7 +88,10 @@ Deno.serve(async req => {
     await upsert('crm_lead_custom_fields', customFields.map(f => ({ source_slug: 'amocrm', external_id: f.id, name: f.name, code: f.code, field_type: f.type, synced_at: metadataAt })));
     await upsert('crm_loss_reasons', lossReasons.map(r => ({ source_slug: 'amocrm', external_id: r.id, name: r.name, synced_at: metadataAt })));
     const closeField = resolveCloseField(customFields, forecastSettings.expected_close_field_id);
-    const { error: metadataError } = await db.from('crm_forecast_settings').update({ field_state: closeField, metadata_synced_at: metadataAt }).eq('source_slug', 'amocrm');
+    let metadataUpdate = db.from('crm_forecast_settings').update({ field_state: closeField, metadata_synced_at: metadataAt }).eq('source_slug', 'amocrm');
+    // A verified field can recover an interrupted setup; an absent field cannot release its claim.
+    if (closeField.state !== 'ready') metadataUpdate = metadataUpdate.neq('field_state->>state', 'creating');
+    const { error: metadataError } = await metadataUpdate;
     if (metadataError) throw metadataError;
 
     let usersRead = 0;

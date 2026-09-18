@@ -43,12 +43,12 @@ export function stageProbabilities(data) {
       requires_expected_date: Boolean(config.requires_expected_date) };
   });
 }
-export function buildForecast(data, { month, manager = 0, pipeline = 0, now = new Date() }) {
+export function buildForecast(data, { month, manager = 0, pipeline = 0, now = new Date(), snapshot = false }, preparedProbabilities = null) {
   if (!validMonth(month)) throw new Error('Invalid month');
   const timezone = data.settings.timezone;
   const today = calendarDate(now.toISOString(), timezone);
   const inMonth = value => calendarDate(value, timezone)?.slice(0, 7) === month;
-  const probabilities = stageProbabilities(data);
+  const probabilities = preparedProbabilities || stageProbabilities(data);
   const stageMap = new Map(probabilities.map(s => [key(s.pipeline_external_id, s.status_external_id), s]));
   const users = new Map(data.users.map(u => [n(u.external_id), u.name]));
   const eligible = data.leads.filter(l => (!manager || (n(l.responsible_user_external_id) || -1) === manager) && (!pipeline || n(l.pipeline_external_id) === pipeline));
@@ -60,12 +60,12 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
     if (!tasksByLead.has(id)) tasksByLead.set(id, []);
     tasksByLead.get(id).push(task);
   }
-  for (const event of data.events) {
+  for (const event of snapshot ? [] : data.events) {
     if (event.entity_type !== 'lead') continue;
     const id = n(event.entity_external_id);
     eventsByLead.set(id, Math.max(eventsByLead.get(id) || 0, stamp(event.created_at_source)));
   }
-  for (const event of data.stages) {
+  for (const event of snapshot ? [] : data.stages) {
     const id = n(event.lead_external_id);
     if (!stagesByLead.has(id)) stagesByLead.set(id, []);
     stagesByLead.get(id).push(event);
@@ -114,6 +114,12 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
       expected_deals_count: deals.length, won_count: wins.length };
   };
   const forecast = totals(expected, won);
+  const quality = { date_coverage: open.length ? open.filter(l => l.expected_close_date).length / open.length : null,
+      next_step_coverage: open.length ? open.filter(l => l.has_next_step).length / open.length : null,
+      budget_coverage: open.length ? open.filter(l => l.price > 0).length / open.length : null,
+      probability_coverage: expected.length ? expected.filter(l => l.probability !== null).length / expected.length : null };
+  // Daily snapshots need totals and coverage only, not event charts or issue drill-downs.
+  if (snapshot) return { actual: { amount: forecast.fact_amount, open_deals_count: open.length }, forecast, quality, deals: expected };
   const group = (field, labels) => [...new Set([...expected, ...won].map(l => l[field]))].map(id => ({
     id, name: labels(id), ...totals(expected.filter(l => l[field] === id), won.filter(l => l[field] === id)),
   }));
@@ -149,10 +155,7 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
       required_without_date: open.filter(l => l.requires_expected_date && !l.expected_close_date).length,
       invalid_date: open.filter(l => l.invalid_date).length,
       stalled_14: open.filter(l => l.inactive_days > 14).length, stalled_30: open.filter(l => l.inactive_days > 30).length },
-    quality: { date_coverage: open.length ? open.filter(l => l.expected_close_date).length / open.length : null,
-      next_step_coverage: open.length ? open.filter(l => l.has_next_step).length / open.length : null,
-      budget_coverage: open.length ? open.filter(l => l.price > 0).length / open.length : null,
-      probability_coverage: expected.length ? expected.filter(l => l.probability !== null).length / expected.length : null },
+    quality,
     deals: expected.sort((a, b) => b.price - a.price), issues,
     by_manager: group('manager_id', id => users.get(id) || 'Без ответственного'),
     by_stage: [...new Set(expected.map(l => key(l.pipeline_id, l.status_id)))].map(id => ({ id, name: stageMap.get(id)?.name || id, ...totals(expected.filter(l => key(l.pipeline_id, l.status_id) === id)) })),
