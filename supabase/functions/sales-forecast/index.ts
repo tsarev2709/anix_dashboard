@@ -1,17 +1,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { loadForecastData } from '../_shared/forecast-data.ts';
 import { buildForecast, stageCatalog, validMonth } from '../_shared/sales-forecast.mjs';
+import { ensureCloseField } from '../_shared/forecast-setup.mjs';
 import { calendarDate } from '../_shared/forecast-fields.mjs';
 const headers = {
   'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
   'Access-Control-Allow-Origin': 'https://dashboard.anix-ai.pro',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, PATCH, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, PATCH, POST, OPTIONS',
 };
 const json = (body: any, status = 200) => new Response(JSON.stringify(body), { status, headers });
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers });
-  if (!['GET', 'PATCH'].includes(req.method)) return json({ ok: false, error: 'Method not allowed' }, 405);
+  if (!['GET', 'PATCH', 'POST'].includes(req.method)) return json({ ok: false, error: 'Method not allowed' }, 405);
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const token = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   if (!token) return json({ ok: false, error: 'Unauthorized' }, 401);
@@ -19,6 +20,42 @@ Deno.serve(async req => {
   if (authError || !auth?.user) return json({ ok: false, error: 'Unauthorized' }, 401);
   if (auth.user.email?.toLowerCase() !== 'studio@anix-ai.pro') return json({ ok: false, error: 'Forbidden' }, 403);
   try {
+    if (req.method === 'POST') {
+      const body = await req.json();
+      if (body.action !== 'connect_date_field') return json({ ok: false, error: 'Unknown action' }, 400);
+      const [{ data: settings, error: settingsError }, { data: credential, error: credentialError }] = await Promise.all([
+        db.from('crm_forecast_settings').select('expected_close_field_id').eq('source_slug', 'amocrm').single(),
+        db.from('integration_credentials').select('account_domain,access_token,token_expires_at').eq('source_slug', 'amocrm').single(),
+      ]);
+      if (settingsError || credentialError) throw settingsError || credentialError;
+      const expiresAt = Date.parse(credential.token_expires_at || '');
+      if (!/^[a-z0-9-]+\.(amocrm\.ru|kommo\.com)$/.test(credential.account_domain) || !Number.isFinite(expiresAt) || expiresAt < Date.now() + 60000) return json({ ok: false, error: 'Дождитесь успешной синхронизации amoCRM и повторите.' }, 409);
+      const api = async (path: string, options: RequestInit = {}) => {
+        const response = await fetch(`https://${credential.account_domain}${path}`, { ...options, headers: { Authorization: `Bearer ${credential.access_token}`, 'Content-Type': 'application/json' } });
+        if (!response.ok) throw new Error(`amoCRM setup HTTP ${response.status}`);
+        return response.status === 204 ? null : await response.json();
+      };
+      const listFields = async () => {
+        const fields: any[] = [];
+        for (let page = 1; page <= 100; page++) {
+          const result = await api(`/api/v4/leads/custom_fields?limit=250&page=${page}`);
+          fields.push(...(result?._embedded?.custom_fields || []));
+          if (!result?._links?.next) return fields;
+        }
+        throw new Error('amoCRM fields pagination limit');
+      };
+      const field = await ensureCloseField({ configuredId: settings.expected_close_field_id, listFields,
+        createField: (value: any) => api('/api/v4/leads/custom_fields', { method: 'POST', body: JSON.stringify([value]) }),
+        claimCreation: async () => {
+          const claim = await db.from('crm_forecast_settings').update({ field_state: { state: 'creating' } }).eq('source_slug', 'amocrm').eq('field_state->>state', 'missing').select('source_slug').maybeSingle();
+          if (claim.error) throw claim.error;
+          return Boolean(claim.data);
+        },
+      });
+      const { error } = await db.from('crm_forecast_settings').update({ expected_close_field_id: field.id, field_state: { ...field, state: 'awaiting_sync' }, updated_at: new Date().toISOString() }).eq('source_slug', 'amocrm');
+      if (error) throw error;
+      return json({ ok: true, field_id: field.id, created: field.created });
+    }
     const data = await loadForecastData(db);
     if (req.method === 'PATCH') {
       const body = await req.json();
