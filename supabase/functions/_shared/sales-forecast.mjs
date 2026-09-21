@@ -1,3 +1,4 @@
+import { salesActivity } from './sales-activity.mjs';
 import { calendarDate } from './forecast-fields.mjs';
 const DAY = 86400000;
 const n = value => Number(value || 0);
@@ -40,6 +41,7 @@ export function stageProbabilities(data) {
     else if (config.fallback_probability != null) { probability = n(config.fallback_probability); probability_source = 'fallback'; }
     return { ...stage, probability, probability_source, sample_size: ids.length, observed_probability: observed,
       manual_override: config.manual_override ?? null, fallback_probability: config.fallback_probability ?? null,
+      forecast_phase: config.forecast_phase || 'unmapped',
       requires_expected_date: Boolean(config.requires_expected_date) };
   });
 }
@@ -93,6 +95,7 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
       weighted_amount: stage?.probability == null ? null : Math.round(n(lead.price) * stage.probability * 100) / 100,
       expected_close_date: lead.expected_close_date, invalid_date: lead.expected_close_date_invalid,
       requires_expected_date: stage?.requires_expected_date || false,
+      forecast_phase: stage?.forecast_phase || 'unmapped', contract_format: lead.contract_format || 'Не указан',
       overdue_days: lead.expected_close_date && lead.expected_close_date < today ? Math.round((Date.parse(today) - Date.parse(lead.expected_close_date)) / DAY) : 0,
       next_step: next?.text || (next ? 'Задача без описания' : null), next_step_at: next?.complete_till || null,
       has_next_step: pending.length > 0,
@@ -102,7 +105,8 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
     };
   });
   const open = enriched.filter(l => l.outcome === 'open');
-  const expected = open.filter(l => l.expected_close_date?.slice(0, 7) === month);
+  const signing = open.filter(l => l.forecast_phase === 'signing');
+  const expected = signing.filter(l => l.expected_close_date?.slice(0, 7) === month);
   const won = enriched.filter(l => l.outcome === 'won' && inMonth(l.closed_at));
   const lost = enriched.filter(l => l.outcome === 'lost' && inMonth(l.closed_at));
   const totals = (deals, wins = []) => {
@@ -114,7 +118,7 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
       expected_deals_count: deals.length, won_count: wins.length };
   };
   const forecast = totals(expected, won);
-  const quality = { date_coverage: open.length ? open.filter(l => l.expected_close_date).length / open.length : null,
+  const quality = { date_coverage: signing.length ? signing.filter(l => l.expected_close_date).length / signing.length : null,
       next_step_coverage: open.length ? open.filter(l => l.has_next_step).length / open.length : null,
       budget_coverage: open.length ? open.filter(l => l.price > 0).length / open.length : null,
       probability_coverage: expected.length ? expected.filter(l => l.probability !== null).length / expected.length : null };
@@ -150,25 +154,32 @@ export function buildForecast(data, { month, manager = 0, pipeline = 0, now = ne
       crm_events_count: monthlyEvents.length },
     forecast,
     discipline: { without_next_step: open.filter(l => !l.has_next_step).length,
-      overdue_tasks: sum(open, l => l.overdue_tasks), overdue_close_date: open.filter(l => l.overdue_days).length,
+      overdue_tasks: sum(open, l => l.overdue_tasks), overdue_close_date: signing.filter(l => l.overdue_days).length,
+      signing_without_date: signing.filter(l => !l.expected_close_date).length,
+      signing_without_date_amount: sum(signing.filter(l => !l.expected_close_date), l => l.price),
+      signing_deals_count: signing.length,
+      excluded_deals_count: open.filter(l => l.forecast_phase !== 'signing').length,
+      unmapped_deals_count: open.filter(l => l.forecast_phase === 'unmapped').length,
       without_date: open.filter(l => !l.expected_close_date).length,
       required_without_date: open.filter(l => l.requires_expected_date && !l.expected_close_date).length,
       invalid_date: open.filter(l => l.invalid_date).length,
       stalled_14: open.filter(l => l.inactive_days > 14).length, stalled_30: open.filter(l => l.inactive_days > 30).length },
     quality,
     deals: expected.sort((a, b) => b.price - a.price), issues,
+    activity: salesActivity(data, { month, manager, pipeline, now }),
+    by_contract_format: group('contract_format', id => id),
     by_manager: group('manager_id', id => users.get(id) || 'Без ответственного'),
     by_stage: [...new Set(expected.map(l => key(l.pipeline_id, l.status_id)))].map(id => ({ id, name: stageMap.get(id)?.name || id, ...totals(expected.filter(l => key(l.pipeline_id, l.status_id) === id)) })),
     by_day: [...byDay].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count })),
     loss_reasons: [...lossGroups].map(([name, count]) => ({ name, count })),
     configuration: { ...data.settings, stages: probabilities },
     caveats: [
-      'Прогноз сделок не равен поступлениям денег. Факт — текущие выигранные сделки по дате закрытия.',
+      'Потенциальная дата — ожидаемое подписание договора, не окончание производства. Прогноз сделок не равен поступлениям денег. Факт — текущие выигранные сделки по дате закрытия.',
       'Открытые карточки включают раннюю базу поиска контактов; это не количество активных переговоров.',
       'Открытые сделки и дисциплина показаны на текущий момент, включая при выборе прошлых месяцев.',
       'Конверсия — выиграно / (выиграно + проиграно) за месяц, не когортная конверсия.',
       'Наблюдаемая вероятность: уникальные завершённые сделки с зафиксированным посещением стадии. Незавершённые исключены; история может быть неполной.',
-      'Активность — события карточек CRM, включая автоматические изменения. Это не число действий менеджера; норматив 800 не применяется.',
+      'События CRM отделены от действий продавца. В действия входят исходящие коммуникации с автором и явно размеченные завершённые задачи поиска/анализа; 800 в день — рабочий ориентир.',
       'Выполненные задачи, встречи и КП не выводятся без надёжного события завершения и согласованного соответствия реальным стадиям.',
     ],
   };
