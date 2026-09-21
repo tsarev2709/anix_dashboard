@@ -18,11 +18,11 @@ export async function readAll(db: any, table: string, columns: string, order = '
 }
 export async function loadForecastData(db: any, snapshot = false) {
   const [leads, pipelines, users, tasks, events, stages, lossReasons, config, source, account] = await Promise.all([
-    readAll(db, 'crm_leads', 'external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,loss_reason_external_id,expected_close_date,expected_close_date_invalid'),
+    readAll(db, 'crm_leads', 'external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,loss_reason_external_id,expected_close_date,expected_close_date_invalid,contract_format'),
     readAll(db, 'crm_pipelines', 'external_id,name,raw'),
     readAll(db, 'crm_users', 'external_id,name'),
     readAll(db, 'crm_tasks', 'external_id,entity_external_id,entity_type,responsible_user_external_id,text,is_completed,complete_till,created_at_source,updated_at_source'),
-    snapshot ? Promise.resolve([]) : readAll(db, 'crm_events', 'external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source'),
+    snapshot ? Promise.resolve([]) : readAll(db, 'crm_events', 'external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source,value_after'),
     readAll(db, 'crm_lead_stage_events', 'id,lead_external_id,pipeline_external_id,status_external_id,observed_at', 'id'),
     readAll(db, 'crm_loss_reasons', 'external_id,name'),
     db.from('crm_forecast_settings').select('*').eq('source_slug', 'amocrm').single(),
@@ -62,7 +62,7 @@ export async function captureForecastSnapshots(db: any, now = new Date()) {
         manager_external_id: scope.manager, pipeline_external_id: scope.pipeline, captured_at: now.toISOString(),
         fact_amount: result.actual.amount, weighted_forecast_amount: result.forecast.weighted_forecast_amount,
         potential_pipeline_amount: result.forecast.potential_pipeline_amount, open_deals_count: result.actual.open_deals_count,
-        expected_deals_count: result.deals.length, raw_metrics: { forecast: result.forecast, quality: result.quality, field_state: data.settings.field_state, model_version: 1 } };
+        expected_deals_count: result.deals.length, raw_metrics: { forecast: result.forecast, quality: result.quality, field_state: data.settings.field_state, model_version: 2 } };
     });
     // First successful sync of each day is immutable. Reruns cannot revise past forecasts.
     const { error } = await db.from('sales_forecast_snapshots').upsert(rows, { onConflict: 'source_slug,snapshot_date,forecast_month,manager_external_id,pipeline_external_id', ignoreDuplicates: true });

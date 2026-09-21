@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { applySigningSetup } from '../_shared/signing-setup.ts';
+import { resolveContractField, contractFormat } from '../_shared/forecast-policy.mjs';
 import { resolveCloseField, extractCloseDate } from '../_shared/forecast-fields.mjs';
 import { captureForecastSnapshots } from '../_shared/forecast-data.ts';
 
@@ -50,12 +52,12 @@ Deno.serve(async req => {
       if (error) throw error;
     }
 
-    const api = async (path: string) => {
-      const r = await fetch(`https://${credential.account_domain}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    const api = async (path: string, options: RequestInit = {}) => {
+      const r = await fetch(`https://${credential.account_domain}${path}`, { ...options, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
       if (r.status === 204) return null;
       const text = await r.text();
       let body: any; try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
-      if (!r.ok) throw new Error(`amoCRM ${path}: HTTP ${r.status}: ${JSON.stringify(body)}`);
+      if (!r.ok) throw new Error(`amoCRM ${path}: HTTP ${r.status}`);
       return body;
     };
     const upsert = async (table: string, rows: any[], conflict = 'source_slug,external_id') => {
@@ -82,11 +84,16 @@ Deno.serve(async req => {
       }
       throw new Error(`${path}: pagination limit reached`);
     };
-    const customFields = await metadata('/api/v4/leads/custom_fields', 'custom_fields');
+    let customFields = await metadata('/api/v4/leads/custom_fields', 'custom_fields');
+    if (!forecastSettings.signing_policy_applied_at) {
+      await applySigningSetup(db, api, () => metadata('/api/v4/leads/custom_fields', 'custom_fields'), forecastSettings);
+      customFields = await metadata('/api/v4/leads/custom_fields', 'custom_fields');
+    }
     const lossReasons = await metadata('/api/v4/leads/loss_reasons', 'loss_reasons');
     const metadataAt = new Date().toISOString();
     await upsert('crm_lead_custom_fields', customFields.map(f => ({ source_slug: 'amocrm', external_id: f.id, name: f.name, code: f.code, field_type: f.type, synced_at: metadataAt })));
     await upsert('crm_loss_reasons', lossReasons.map(r => ({ source_slug: 'amocrm', external_id: r.id, name: r.name, synced_at: metadataAt })));
+    const formatField = resolveContractField(customFields);
     const closeField = resolveCloseField(customFields, forecastSettings.expected_close_field_id);
     let metadataUpdate = db.from('crm_forecast_settings').update({ field_state: closeField, metadata_synced_at: metadataAt }).eq('source_slug', 'amocrm');
     // A verified field can recover an interrupted setup; an absent field cannot release its claim.
@@ -108,7 +115,7 @@ Deno.serve(async req => {
       const ids = leads.map((l: any) => l.id);
       const { data: existing, error } = await db.from('crm_leads').select('external_id,status_external_id,pipeline_external_id').in('external_id', ids).eq('source_slug', 'amocrm'); if (error) throw error;
       const old = new Map((existing || []).map((x: any) => [x.external_id, x]));
-      const rows = dedupe(leads.map((l: any) => ({ source_slug: 'amocrm', external_id: l.id, name: l.name, price: l.price || 0, pipeline_external_id: l.pipeline_id, status_external_id: l.status_id, responsible_user_external_id: l.responsible_user_id, created_at_source: iso(l.created_at), updated_at_source: iso(l.updated_at), closed_at_source: iso(l.closed_at), loss_reason_external_id: l.loss_reason_id, expected_close_date: extractCloseDate(l, closeField.id, forecastSettings.timezone).date, expected_close_date_invalid: extractCloseDate(l, closeField.id, forecastSettings.timezone).invalid, raw: l, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_leads');
+      const rows = dedupe(leads.map((l: any) => ({ source_slug: 'amocrm', external_id: l.id, name: l.name, price: l.price || 0, pipeline_external_id: l.pipeline_id, status_external_id: l.status_id, responsible_user_external_id: l.responsible_user_id, created_at_source: iso(l.created_at), updated_at_source: iso(l.updated_at), closed_at_source: iso(l.closed_at), loss_reason_external_id: l.loss_reason_id, expected_close_date: extractCloseDate(l, closeField.id, forecastSettings.timezone).date, expected_close_date_invalid: extractCloseDate(l, closeField.id, forecastSettings.timezone).invalid, contract_format: contractFormat(l, formatField?.id), raw: l, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_leads');
       await upsert('crm_leads', rows); recordsWritten += rows.length;
       const changes = rows.filter((l: any) => !old.has(l.external_id) || old.get(l.external_id)?.status_external_id !== l.status_external_id || old.get(l.external_id)?.pipeline_external_id !== l.pipeline_external_id).map((l: any) => ({ source_slug: 'amocrm', lead_external_id: l.external_id, pipeline_external_id: l.pipeline_external_id, status_external_id: l.status_external_id, observed_at: l.updated_at_source || new Date().toISOString() }));
       if (changes.length) { const { error: e } = await db.from('crm_lead_stage_events').insert(changes); if (e) throw e; transitionsWritten += changes.length; }
@@ -124,12 +131,14 @@ Deno.serve(async req => {
     }
 
     let eventsRead = 0;
+    for (const eventFilter of ['&filter[entity][]=lead&filter[entity][]=task', '&filter[type]=outgoing_call,outgoing_mail,outgoing_chat_message,outgoing_sms']) {
     for (let page = 1; page <= 100; page++) {
-      const body = await api(`/api/v4/events?limit=100&page=${page}&filter[created_at][from]=${from}&filter[entity][]=lead&filter[entity][]=task&with=lead_name`); const events = body?._embedded?.events || []; if (!events.length) break;
+      const body = await api(`/api/v4/events?limit=100&page=${page}&filter[created_at][from]=${from}${eventFilter}&with=lead_name`); const events = body?._embedded?.events || []; if (!events.length) break;
       const rows = dedupe(events.map((e: any) => ({ source_slug: 'amocrm', external_id: String(e.id), event_type: e.type || 'unknown', entity_external_id: e.entity_id || null, entity_type: e.entity_type || null, created_by_external_id: e.created_by || null, created_at_source: iso(e.created_at) || new Date().toISOString(), value_before: e.value_before || [], value_after: e.value_after || [], raw: e, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_events');
       eventsRead += rows.length; await upsert('crm_events', rows); if (!body?._links?.next) break; if (page === 100) throw new Error('amoCRM pagination limit reached');
     }
 
+    }
     const forecastSnapshots = await captureForecastSnapshots(db);
     const read = recordsRead + usersRead + pipelineRows.length + rawStatuses.length + tasksRead + eventsRead;
     const written = recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten + tasksRead + eventsRead;

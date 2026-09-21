@@ -8,7 +8,7 @@ const fixture = () => ({
   leads: [lead(1), lead(2, { status_external_id: 142, closed_at_source: '2026-09-05T10:00:00Z', price: 2000 }), lead(3, { status_external_id: 143, closed_at_source: '2026-09-07T10:00:00Z', price: 500 }), lead(4, { expected_close_date: '2026-10-02' })],
   pipelines: [{ external_id: 10, name: 'Sales', raw: { _embedded: { statuses: [{ id: 700, name: 'Offer', sort: 20 }, { id: 701, name: 'Talk', sort: 10 }, { id: 142, name: 'Won' }, { id: 143, name: 'Lost' }] } } }],
   users: [{ external_id: 3, name: 'Alice' }], tasks: [], events: [], stages: [], lossReasons: [],
-  probabilities: [{ pipeline_external_id: 10, status_external_id: 700, manual_override: .7, requires_expected_date: true }],
+  probabilities: [{ pipeline_external_id: 10, status_external_id: 700, manual_override: .7, requires_expected_date: true, forecast_phase: 'signing' }],
   settings: { timezone: 'Europe/Moscow', min_sample_size: 30, observed_enabled: false, field_state: { state: 'ready' } },
   source: { status: 'healthy', last_success_at: now.toISOString() }, account_domain: 'studioanixaipro.amocrm.ru',
 });
@@ -17,7 +17,7 @@ test('separates actual, weighted, nominal; excludes lost and other months', () =
   const p = forecast(fixture()); assert.equal(p.actual.amount, 2000); assert.equal(p.forecast.weighted_forecast_amount, 700); assert.equal(p.forecast.potential_pipeline_amount, 1000); assert.equal(p.actual.lost_count, 1); assert.equal(p.actual.closed_win_rate, .5); assert.deepEqual(p.deals.map(l => l.id), [1]);
 });
 test('missing probability gives unknown total, not zero or fabricated probability', () => {
-  const data = fixture(); data.probabilities = [];
+  const data = fixture(); data.probabilities[0].manual_override = null;
   const p = forecast(data); assert.equal(p.forecast.weighted_forecast_amount, null); assert.equal(p.forecast.unweighted_amount, 1000);
 });
 test('missing date field makes forecast unavailable even with no expected deals', () => {
@@ -112,4 +112,18 @@ test('lightweight daily snapshots match full report totals and coverage in every
       assert.equal(snapshot.deals.length, full.deals.length);
     }
   }
+});
+test('early, delivery and unmapped deals never enter signing forecast even with a date and probability', () => {
+  for (const phase of ['excluded','delivery','unmapped']) {
+    const data = fixture(); data.probabilities[0].forecast_phase=phase;
+    const p=forecast(data); assert.equal(p.deals.length,0); assert.equal(p.forecast.potential_pipeline_amount,0); assert.equal(p.forecast.weighted_forecast_amount,0);
+  }
+});
+test('qualified undated deals are visible as missing dates but never assigned an invented month', () => {
+  const data=fixture();data.leads[0].expected_close_date=null;
+  const p=forecast(data);assert.equal(p.discipline.signing_without_date,1);assert.equal(p.discipline.signing_without_date_amount,1000);assert.equal(p.deals.length,0);
+});
+test('regular contract grouping uses contract value once, never fabricates monthly cash receipts', () => {
+  const data=fixture();data.leads[0].contract_format='Регулярный ежемесячный';
+  const p=forecast(data);assert.equal(p.by_contract_format.find(r=>r.id==='Регулярный ежемесячный').weighted_forecast_amount,700);
 });

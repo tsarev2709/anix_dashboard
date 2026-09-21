@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { loadForecastData } from '../_shared/forecast-data.ts';
 import { buildForecast, stageCatalog, validMonth } from '../_shared/sales-forecast.mjs';
+import { applySigningSetup } from '../_shared/signing-setup.ts';
 import { ensureCloseField } from '../_shared/forecast-setup.mjs';
 import { calendarDate } from '../_shared/forecast-fields.mjs';
 const headers = {
@@ -22,9 +23,9 @@ Deno.serve(async req => {
   try {
     if (req.method === 'POST') {
       const body = await req.json();
-      if (body.action !== 'connect_date_field') return json({ ok: false, error: 'Unknown action' }, 400);
+      if (!['connect_date_field', 'apply_signing_policy'].includes(body.action)) return json({ ok: false, error: 'Unknown action' }, 400);
       const [{ data: settings, error: settingsError }, { data: credential, error: credentialError }] = await Promise.all([
-        db.from('crm_forecast_settings').select('expected_close_field_id').eq('source_slug', 'amocrm').single(),
+        db.from('crm_forecast_settings').select('expected_close_field_id,contract_setup_state').eq('source_slug', 'amocrm').single(),
         db.from('integration_credentials').select('account_domain,access_token,token_expires_at').eq('source_slug', 'amocrm').single(),
       ]);
       if (settingsError || credentialError) throw settingsError || credentialError;
@@ -44,6 +45,9 @@ Deno.serve(async req => {
         }
         throw new Error('amoCRM fields pagination limit');
       };
+      if (body.action === 'apply_signing_policy') {
+        return json(await applySigningSetup(db, api, listFields, settings));
+      }
       const field = await ensureCloseField({ configuredId: settings.expected_close_field_id, listFields,
         createField: (value: any) => api('/api/v4/leads/custom_fields', { method: 'POST', body: JSON.stringify([value]) }),
         claimCreation: async () => {
@@ -70,7 +74,7 @@ Deno.serve(async req => {
     const manager = Number(url.searchParams.get('manager') || 0), pipeline = Number(url.searchParams.get('pipeline') || 0);
     if (!validMonth(month) || !Number.isSafeInteger(manager) || manager < -1 || !Number.isSafeInteger(pipeline) || pipeline < 0) return json({ ok: false, error: 'Некорректный месяц или фильтр.' }, 400);
     const payload = buildForecast(data, { month, manager, pipeline });
-    const history = await db.from('sales_forecast_snapshots').select('snapshot_date,captured_at,fact_amount,weighted_forecast_amount,potential_pipeline_amount,expected_deals_count').eq('source_slug', 'amocrm').eq('forecast_month', `${month}-01`).eq('manager_external_id', manager).eq('pipeline_external_id', pipeline).order('snapshot_date');
+    const history = await db.from('sales_forecast_snapshots').select('snapshot_date,captured_at,fact_amount,weighted_forecast_amount,potential_pipeline_amount,expected_deals_count,raw_metrics').eq('source_slug', 'amocrm').eq('forecast_month', `${month}-01`).eq('manager_external_id', manager).eq('pipeline_external_id', pipeline).order('snapshot_date');
     if (history.error) throw history.error;
     return json({ ...payload, snapshots: history.data || [] });
   } catch (error) {
