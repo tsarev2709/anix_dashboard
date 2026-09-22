@@ -1,7 +1,7 @@
 (() => {
   const q = selector => document.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  const state = { content: [], sources: [], flags: [], metrics: null, selected: null };
+  const state = { content: [], sources: [], flags: [], metrics: null, metrika: null, selected: null };
 
   function endpoint() {
     const config = window.ANIX_CONFIG || {};
@@ -34,6 +34,21 @@
       metricCard('Передано в CRM', m.qualified, 'квалифицированные диалоги'),
       metricCard('Fallback-ответы', m.fallbacks, 'локальная модель или RAG недоступны'),
     ].join('');
+  }
+
+  function renderMetrika() {
+    const target = q('#metrikaReport');
+    if (!target) return;
+    const m = state.metrika;
+    const errors = { not_configured: 'Подключение ожидает OAuth-доступа к счётчику.', access_denied: 'Нет доступа к счётчику. Проверьте срок действия токена и право чтения.', rate_limited: 'Яндекс ограничил частоту запросов. Обновите позже.' };
+    if (!m?.available) {
+      target.innerHTML = '<div class="control-empty">' + esc(errors[m?.error] || 'Статистика временно недоступна.') + '</div>';
+      return;
+    }
+    const number = value => value == null ? '—' : Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+    const cards = [['Визиты', 'visits', ''], ['Посетители', 'users', ''], ['Просмотры', 'pageviews', ''], ['Отказы', 'bounce_rate', '%'], ['Среднее время', 'duration_seconds', ' с']];
+    const table = (title, rows) => '<div><h4>' + esc(title) + '</h4><table><thead><tr><th scope="col">' + esc(title) + '</th><th scope="col">Визиты</th></tr></thead><tbody>' + (rows.length ? rows.map(r => '<tr><td>' + esc(r.label) + '</td><td>' + esc(number(r.visits)) + '</td></tr>').join('') : '<tr><td colspan="2">Нет визитов</td></tr>') + '</tbody></table></div>';
+    target.innerHTML = '<p>' + esc((m.date1 || '') + ' — ' + (m.date2 || '') + ' · обновлено ' + new Date(m.fetched_at).toLocaleString('ru-RU')) + '</p><div class="website-health-grid">' + cards.map(([label, key, unit]) => '<article class="website-health-card"><small>' + esc(label) + '</small><strong>' + esc(number(m.totals[key]) + unit) + '</strong></article>').join('') + '</div><div class="metrika-tables">' + table('По дням', m.daily) + table('Источники переходов', m.sources) + '</div><p class="history-caveat">Источники: последний значимый переход. Часовой пояс счётчика. Данные могут обновляться с задержкой.' + (m.sampled ? ' Яндекс применил выборку.' : '') + '</p>';
   }
 
   function renderContentList() {
@@ -130,15 +145,17 @@
       state.sources = payload.sources || [];
       state.flags = payload.feature_flags || [];
       state.metrics = payload.website_metrics || null;
+      state.metrika = payload.metrika || null;
       if (state.selected?.id) state.selected = state.content.find(item => item.id === state.selected.id) || null;
       renderContentList();
       renderSources();
       renderFlags();
       renderMetrics();
+      renderMetrika();
       if (status) status.textContent = 'Anix Control · ' + payload.viewer.role + ' · ' + new Date(payload.generated_at).toLocaleString('ru-RU');
     } catch (error) {
       if (status) status.textContent = 'Не удалось загрузить Anix Control: ' + error.message;
-      [q('#contentEntryList'), q('#sourceControlGrid'), q('#featureFlagGrid'), q('#websiteMetricGrid')].filter(Boolean).forEach(node => {
+      [q('#contentEntryList'), q('#sourceControlGrid'), q('#featureFlagGrid'), q('#websiteMetricGrid'), q('#metrikaReport')].filter(Boolean).forEach(node => {
         node.innerHTML = '<div class="control-empty">' + esc(error.message) + '</div>';
       });
     }
