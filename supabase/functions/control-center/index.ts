@@ -1,5 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+import { createMetrikaReader } from '../_shared/metrika.mjs';
+const readMetrika = createMetrikaReader();
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -53,7 +56,7 @@ Deno.serve(async (request) => {
 
     if (request.method === 'GET') {
       const since = new Date(Date.now() - 30 * 86400000).toISOString();
-      const [contentResult, sourcesResult, flagsResult, leads, chats, qualified, fallbacks] = await Promise.all([
+      const [contentResult, sourcesResult, flagsResult, leads, chats, qualified, fallbacks, metrika] = await Promise.all([
         supabase.from('content_entries').select('id,slug,content_type,title,body,status,source_repo,source_path,metadata,published_at,updated_at').order('updated_at', { ascending: false }).limit(100),
         supabase.from('data_sources').select('slug,name,category,connection_mode,status,enabled,last_success_at,last_attempt_at,last_error,freshness_minutes').order('name'),
         supabase.from('feature_flags').select('key,enabled,config,description,updated_at').order('key'),
@@ -61,6 +64,7 @@ Deno.serve(async (request) => {
         countSince(supabase, 'ai_chat_sessions', 'created_at', since),
         countSince(supabase, 'ai_chat_sessions', 'created_at', since, { crm_sync_status: 'completed' }),
         countSince(supabase, 'ai_chat_messages', 'created_at', since, { delivery_status: 'fallback' }),
+        readMetrika({ token: Deno.env.get('YANDEX_METRIKA_TOKEN'), counterId: Deno.env.get('YANDEX_METRIKA_COUNTER_ID') || '103290769' }),
       ]);
 
       return json({
@@ -73,6 +77,7 @@ Deno.serve(async (request) => {
         sources_error: sourcesResult.error?.message || null,
         feature_flags: flagsResult.data || [],
         feature_flags_error: flagsResult.error?.message || null,
+        metrika,
         website_metrics: { period_days: 30, leads, chats, qualified, fallbacks },
       });
     }
