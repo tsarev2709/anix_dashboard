@@ -64,7 +64,7 @@ Deno.serve(async (request) => {
         countSince(supabase, 'ai_chat_sessions', 'created_at', since),
         countSince(supabase, 'ai_chat_sessions', 'created_at', since, { crm_sync_status: 'completed' }),
         countSince(supabase, 'ai_chat_messages', 'created_at', since, { delivery_status: 'fallback' }),
-        readMetrika({ token: Deno.env.get('YANDEX_METRIKA_TOKEN'), counterId: Deno.env.get('YANDEX_METRIKA_COUNTER_ID') || '103290769' }),
+        readMetrika({ detailed: true, days: Number(new URL(request.url).searchParams.get('days') || 7), token: Deno.env.get('YANDEX_METRIKA_TOKEN'), counterId: Deno.env.get('YANDEX_METRIKA_COUNTER_ID') || '103290769' }),
       ]);
 
       return json({

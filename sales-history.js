@@ -1,54 +1,29 @@
 (() => {
-  const q = selector => document.querySelector(selector);
-  const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
-  const formatNumber = value => new Intl.NumberFormat('ru-RU').format(Number(value || 0));
-  const formatDateTime = value => value ? new Date(value).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-  const shortDay = value => new Date(value).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-
-  const actionDescription = item => {
-    if (item.kind === 'transition') return `${item.from_status || 'Предыдущий этап'} → ${item.to_status || 'Новый этап'}`;
-    return [item.text, item.result].filter(Boolean).join(' · ') || item.label;
-  };
-
-  async function loadSalesHistory() {
-    const config = window.ANIX_CONFIG || {};
-    if (!config.supabaseUrl || !q('#salesActivitySummary')) return;
-    q('#salesHistoryUpdated').textContent = 'загружаю задачи и события…';
-    try {
-      const response = await fetch(`${config.supabaseUrl}/functions/v1/sales-activity`, { headers: config.supabaseAnonKey ? { apikey: config.supabaseAnonKey } : {} });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-      const summary = payload.summary || {};
-      q('#salesActivitySummary').innerHTML = [
-        ['Сегодня', summary.today, 'всех действий'],
-        ['7 дней', summary.week, 'всех действий'],
-        ['Месяц', summary.month, `${formatNumber(summary.completed_tasks_month)} задач + ${formatNumber(summary.transitions_month)} переходов`],
-        ['Просрочено', summary.overdue_tasks, `из ${formatNumber(summary.pending_tasks)} открытых задач`],
-      ].map(([label, value, note]) => `<article class="sales-summary-card ${label === 'Просрочено' && Number(value) ? 'red' : 'neutral'}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(formatNumber(value))}</strong><span>${escapeHtml(note)}</span></article>`).join('');
-
-      const kinds = payload.by_kind || [];
-      const maxKind = Math.max(1, ...kinds.map(item => item.count));
-      const daily = payload.daily || [];
-      const maxDaily = Math.max(1, ...daily.map(item => item.count));
-      q('#salesActivityStages').innerHTML = `
-        <div class="activity-days">${daily.map(item => `<div class="activity-day" title="${shortDay(item.date)}: ${item.count}"><div class="activity-day-bar"><i style="height:${Math.max(4, item.count / maxDaily * 100)}%"></i></div><small>${shortDay(item.date)}</small><strong>${formatNumber(item.count)}</strong></div>`).join('')}</div>
-        <div class="activity-kind-list">${kinds.length ? kinds.map(item => `<div class="activity-stage-row"><strong>${escapeHtml(item.label)}</strong><div class="bar"><i style="width:${Math.max(5, item.count / maxKind * 100)}%"></i></div><span>${formatNumber(item.count)}</span></div>`).join('') : '<p class="empty-state">Действий за месяц пока нет.</p>'}</div>`;
-
-      q('#salesActivityFeed').innerHTML = (payload.recent || []).length ? payload.recent.slice(0, 18).map(item => `<div class="activity-feed-row ${escapeHtml(item.kind)}"><div><strong>${escapeHtml(item.label)}${item.lead_name ? ` · ${escapeHtml(item.lead_name)}` : ''}</strong><small>${escapeHtml(actionDescription(item))}</small><small>${escapeHtml(item.user_name)} · ${formatDateTime(item.at)}${item.pipeline_name ? ` · ${escapeHtml(item.pipeline_name)}` : ''}</small></div><span>${item.kind === 'transition' ? 'этап' : 'задача'}</span></div>`).join('') : '<p class="empty-state">История появится после синхронизации задач и событий amoCRM.</p>';
-
-      const topManager = (payload.managers || []).find(item => !item.is_admin) || (payload.managers || [])[0];
-      const managerNote = topManager ? `Основной продавец: ${topManager.name} — ${formatNumber(topManager.actions)} действий за месяц.` : 'Активный продавец пока не определён.';
-      q('#salesHistoryUpdated').textContent = `обновлено ${formatDateTime(payload.generated_at)}`;
-      q('#salesHistoryCaveat').textContent = `${managerNote} Переход по этапу считается результативным действием; выполненная задача — операционным действием. Follow-up, ВКС, звонки и КП определяются по типу и тексту задачи amoCRM.`;
-    } catch (error) {
-      q('#salesHistoryUpdated').textContent = 'нужна миграция или деплой функции';
-      q('#salesActivityFeed').innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
-      q('#salesHistoryCaveat').textContent = 'Примените миграцию crm_activity в Supabase и повторно запустите Sync amoCRM.';
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', loadSalesHistory);
-  const refresh = q('#refreshSales');
-  if (refresh) refresh.addEventListener('click', loadSalesHistory);
-  loadSalesHistory();
+ const q=s=>document.querySelector(s), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const day=d=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
+ const time=v=>v?new Date(v).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'—';
+ let page=1, seq=0, ready=false, last=null;
+ const filters=()=>Object.fromEntries([...q('#activityFilters').elements].filter(e=>e.name).map(e=>[e.name,e.type==='checkbox'?(e.checked?'1':'0'):e.value]));
+ function preset(which){const now=new Date(),today=day(now),start=new Date(today+'T12:00:00+03:00'); if(which==='week')start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);if(which==='month')start.setUTCDate(1);q('#activityFrom').value=day(start);q('#activityTo').value=today;page=1;load();}
+ const table=(heads,rows)=>`<div class="report-scroll"><table class="report-table"><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+ function options(node,items,key){const selected=node.value;node.innerHTML=node.options[0].outerHTML+items.map(x=>`<option value="${esc(x[key])}">${esc(x.name||x.label)}</option>`).join('');node.value=selected;}
+ async function request(extra={}){const c=window.ANIX_CONFIG;const r=await fetch(`${c.supabaseUrl}/functions/v1/sales-activity?${new URLSearchParams({...filters(),page,...extra})}`,{headers:{apikey:c.supabaseAnonKey},cache:'no-store'});const p=await r.json();if(!r.ok||!p.ok)throw Error(p.error||`HTTP ${r.status}`);return p;}
+ async function load(){if(!q('#activityFilters'))return;const id=++seq;q('#salesHistoryUpdated').textContent='Загружаю журнал…';q('#activityExport').disabled=true;
+ try{const p=await request();if(id!==seq)return;last=p;
+ if(!ready){options(q('#activityManager'),p.filters.users,'id');options(q('#activityPipeline'),p.filters.pipelines,'id');options(q('#activityKind'),p.filters.kinds,'kind');ready=true;}
+ q('#salesActivitySummary').innerHTML=[['Сегодня',p.today.operations,'операций CRM'],['Эта неделя',p.week.operations,'с понедельника, МСК'],['Этот месяц',p.month.operations,'с первого числа, МСК'],['Выбранный период',p.summary.operations,`${p.summary.touches} исходящих касаний · ${p.summary.tasks} выполненных задач`]].map(([l,v,n])=>`<article class="sales-summary-card neutral"><small>${esc(l)}</small><strong>${v}</strong><span>${esc(n)}</span></article>`).join('');
+ q('#activityDaily').innerHTML=table(['День (МСК)','Операции','Исходящие касания','Выполнено задач','Карточки'],p.daily.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.operations}</td><td>${d.touches}</td><td>${d.tasks}</td><td>${d.entities}</td></tr>`));
+ q('#activityManagers').innerHTML=table(['Сотрудник','Операции','Исходящие касания','Выполнено задач','Карточки'],p.managers.map(m=>`<tr><td>${esc(m.name)}</td><td>${m.operations}</td><td>${m.touches}</td><td>${m.tasks}</td><td>${m.entities}</td></tr>`));
+ q('#activityKinds').innerHTML=p.by_kind.map(k=>`<span class="activity-chip">${esc(k.label)} <b>${k.count}</b></span>`).join('')||'Нет записей за выбранный период.';
+ q('#salesActivityFeed').innerHTML=p.actions.length?table(['Когда / кто','Действие','Где','Подробности'],p.actions.map(a=>`<tr><td>${esc(time(a.at))}<small>${esc(a.user_name)}</small></td><td>${esc(a.label)}<small>${esc(a.evidence)}${a.human?'':' · не входит в действия сотрудника'}</small></td><td>${a.url?`<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.entity_name)} ↗</a>`:esc(a.entity_name)}<small>${esc(a.pipeline_name||'Воронка не определена')}</small></td><td>${esc(a.detail||a.task_text||'')} ${a.task_text_is_current&&a.task_text?'<small>Текущий текст задачи, мог измениться</small>':''}${a.result?`<small>Результат: ${esc(a.result)}</small>`:''}<details><summary>До / после · ID события</summary><pre>${esc(a.before)}\n→ ${esc(a.after)}\n${esc(a.id)} · ${esc(a.event_type)}</pre></details></td></tr>`)):'<p class="empty-state">В загруженной истории нет событий по этим фильтрам. Это не подтверждает отсутствие работы.</p>';
+ q('#activityPage').textContent=`${p.total} записей · страница ${p.page} из ${Math.max(1,Math.ceil(p.total/p.page_size))}`;q('#activityPrev').disabled=p.page<=1;q('#activityNext').disabled=p.page*p.page_size>=p.total;
+ q('#salesHistoryUpdated').textContent=`Синхронизация amoCRM: ${time(p.source?.last_success_at)} · ${p.source?.status||'статус неизвестен'}`;
+ const c=p.coverage;q('#activityCoverage').textContent=c?`Полная выборка типов событий: с ${day(new Date(c.backfilled_from))} до последней успешной синхронизации. ${c.backfilled_from>c.history_from?'Более ранняя история ещё загружается: итоги прошлых периодов могут увеличиться.':'Историческая загрузка завершена.'} ${p.system_events} входящих / системных событий отдельно.`:'Полнота истории ещё не подтверждена. Дождитесь успешной синхронизации amoCRM.';
+ q('#activityExport').disabled=false;
+ }catch(e){if(id!==seq)return;q('#salesHistoryUpdated').textContent='Не удалось загрузить отчёт';q('#activityCoverage').textContent=e.message;for(const selector of ['#salesActivitySummary','#activityDaily','#activityManagers','#activityKinds','#activityPage'])q(selector).innerHTML='';q('#activityPrev').disabled=true;q('#activityNext').disabled=true;q('#salesActivityFeed').innerHTML='<p>Данные недоступны. Повторите обновление.</p>';}}
+ q('#activityFilters')?.addEventListener('submit',e=>{e.preventDefault();page=1;load();});
+ document.querySelectorAll('[data-activity-period]').forEach(b=>b.addEventListener('click',()=>preset(b.dataset.activityPeriod)));
+ q('#activityPrev')?.addEventListener('click',()=>{page--;load();});q('#activityNext')?.addEventListener('click',()=>{page++;load();});
+ q('#activityExport')?.addEventListener('click',async()=>{q('#activityExport').disabled=true;try{const p=await request({export:'1'});const quote=v=>'"'+String(v??'').replace(/^[=+@\-\t\r]/,"'$&").replaceAll('"','""')+'"';const rows=[['Время МСК','Сотрудник','Действие','Тип','Объект','Воронка','Подтверждение','Текст задачи','Результат','До','После','Ссылка','ID'],...p.actions.map(a=>[time(a.at),a.user_name,a.label,a.event_type,a.entity_name,a.pipeline_name,a.evidence,a.task_text,a.result,a.before,a.after,a.url,a.id])];const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(quote).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=`amo-actions-${p.from}-${p.to}.csv`;a.click();URL.revokeObjectURL(url);}catch(e){q('#activityCoverage').textContent=e.message;}finally{q('#activityExport').disabled=false;}});
+ q('#refreshSales')?.addEventListener('click',load);preset('month');
 })();

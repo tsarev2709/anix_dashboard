@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.sales-forecast]
 verify_jwt = true
+
+[functions.sales-activity]
+verify_jwt = true

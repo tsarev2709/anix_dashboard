@@ -9,7 +9,7 @@
   }
 
   async function request(body) {
-    const url = endpoint();
+    const url = endpoint() + '?days=' + (q('#marketingPeriod')?.value || '7');
     if (!url) throw new Error('В runtime-config.js не указан Supabase URL.');
     const options = body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' };
     const response = await fetch(url, options);
@@ -41,6 +41,7 @@
     if (!target) return;
     const m = state.metrika;
     const errors = { not_configured: 'Подключение ожидает OAuth-доступа к счётчику.', access_denied: 'Нет доступа к счётчику. Проверьте срок действия токена и право чтения.', rate_limited: 'Яндекс ограничил частоту запросов. Обновите позже.' };
+    renderMarketingDetails(m);
     if (!m?.available) {
       target.innerHTML = '<div class="control-empty">' + esc(errors[m?.error] || 'Статистика временно недоступна.') + '</div>';
       return;
@@ -49,6 +50,25 @@
     const cards = [['Визиты', 'visits', ''], ['Посетители', 'users', ''], ['Просмотры', 'pageviews', ''], ['Отказы', 'bounce_rate', '%'], ['Среднее время', 'duration_seconds', ' с']];
     const table = (title, rows) => '<div><h4>' + esc(title) + '</h4><table><thead><tr><th scope="col">' + esc(title) + '</th><th scope="col">Визиты</th></tr></thead><tbody>' + (rows.length ? rows.map(r => '<tr><td>' + esc(r.label) + '</td><td>' + esc(number(r.visits)) + '</td></tr>').join('') : '<tr><td colspan="2">Нет визитов</td></tr>') + '</tbody></table></div>';
     target.innerHTML = '<p>' + esc((m.date1 || '') + ' — ' + (m.date2 || '') + ' · обновлено ' + new Date(m.fetched_at).toLocaleString('ru-RU')) + '</p><div class="website-health-grid">' + cards.map(([label, key, unit]) => '<article class="website-health-card"><small>' + esc(label) + '</small><strong>' + esc(number(m.totals[key]) + unit) + '</strong></article>').join('') + '</div><div class="metrika-tables">' + table('По дням', m.daily) + table('Источники переходов', m.sources) + '</div><p class="history-caveat">Источники: последний значимый переход. Часовой пояс счётчика. Данные могут обновляться с задержкой.' + (m.sampled ? ' Яндекс применил выборку.' : '') + '</p>';
+  }
+
+  function renderMarketingDetails(m) {
+    const target=q('#marketingDetails'); if(!target)return;
+    if(!m?.available){target.innerHTML='<p>Рекомендации появятся после получения статистики сайта.</p>';return;}
+    const n=v=>v==null?'—':Number(v).toLocaleString('ru-RU',{maximumFractionDigits:1});
+    const reportTable=(title,r)=>`<details class="report-detail"><summary>${esc(title)}</summary>${r?.available?`<div class="report-scroll"><table class="report-table"><thead><tr><th>Сегмент</th><th>Визиты</th><th>Отказы, %</th><th>Время, с</th></tr></thead><tbody>${r.rows.map(x=>`<tr><td>${esc(x.label)}</td><td>${n(x.visits)}</td><td>${n(x.bounce_rate)}</td><td>${n(x.duration_seconds)}</td></tr>`).join('')}</tbody></table></div><p class="history-caveat">${r.total_rows>r.rows.length?`Показаны ${r.rows.length} из ${r.total_rows} сегментов. `:''}${r.sampled?'Применена выборка.':''}</p>`:'<p>Этот срез недоступен.</p>'}</details>`;
+    const suggestions=[]; const pages=m.details?.pages;
+    const poor=pages?.rows?.filter(x=>x.visits>=30&&x.bounce_rate>=40).sort((a,b)=>b.visits-a.visits)[0];
+    if(poor)suggestions.push(['Проверить входную страницу',`${poor.label}: ${n(poor.visits)} визитов, ${n(poor.bounce_rate)}% отказов.`, 'Проверить соответствие первого экрана источнику трафика, мобильную загрузку и заметность CTA. Сравнить конверсию цели до и после изменения. Порог 30 визитов / 40% — эвристика, не норматив.']);
+    const devices=m.details?.devices?.rows||[],mobile=devices.find(x=>/мобил|smartphone/i.test(x.label)),desktop=devices.find(x=>/пк|desktop/i.test(x.label));
+    if(mobile?.visits>=30&&desktop?.visits>=30&&mobile.bounce_rate-desktop.bounce_rate>=15)suggestions.push(['Проверить мобильный путь',`Отказы на мобильных выше на ${n(mobile.bounce_rate-desktop.bounce_rate)} п.п.`, 'Проверить размер кнопок, поля формы и скорость на телефоне. Гипотеза: интерфейс затрудняет обращение; подтвердить по целям и записям сессий.']);
+    const goals=m.goals;
+    if(!goals?.available||!goals.rows.length)suggestions.push(['Сделать путь до заявки измеримым',goals?.available?'В счётчике нет целей.':'Цели не удалось получить.', 'Нужны события CTA, начало формы и успешная отправка. Затем настроить последовательную составную цель. Без неё точное место потери заявки неизвестно.']);
+    const untagged=m.details?.campaigns?.rows?.filter(x=>x.label.includes('Не размечено')).reduce((sum,x)=>sum+(x.visits||0),0)||0;
+    if(untagged)suggestions.push(['Разметить публикации и кампании',`${n(untagged)} визитов в показанных строках имеют неполные UTM.`, 'Добавить source, medium, campaign и content к ссылкам Telegram и VK. Прямые и органические переходы могут быть без UTM — это само по себе не ошибка.']);
+    if(!suggestions.length)suggestions.push(['Проверить конверсию целевых страниц',`За период ${n(m.totals.visits)} визитов. Явных сигналов по заданным порогам нет.`, 'Выбрать страницу с наибольшим трафиком, сформулировать одну гипотезу для CTA и сравнить конверсию на сопоставимом трафике.']);
+    let comparison='Предыдущий период недоступен.';const prev=m.details?.previous;if(prev?.available){const a=m.totals.visits,b=prev.totals[0];comparison=`Визиты: ${n(a)} против ${n(b)} за предыдущие ${m.period_days} дней · ${b?n((a-b)/b*100)+'%':'процент не рассчитывается при нулевой базе'}. Текущий период включает неполный сегодняшний день.`;}
+    target.innerHTML=`<p>${esc(comparison)}</p><h3>Что улучшать дальше</h3><p class="history-caveat">Ниже — проверяемые гипотезы по данным, а не доказанные причины потерь.</p>${suggestions.map(([title,fact,action])=>`<article class="marketing-next"><strong>${esc(title)}</strong><p>${esc(fact)}</p><p>${esc(action)}</p></article>`).join('')}${reportTable('Входные страницы · трафик и отказы',m.details?.pages)}${reportTable('Устройства · мобильные и компьютер',m.details?.devices)}${reportTable('Кампании и публикации · UTM',m.details?.campaigns)}<details class="report-detail" open><summary>Цели и конверсии</summary>${goals?.available?`<div class="report-scroll"><table class="report-table"><thead><tr><th>Цель</th><th>Достижения</th><th>Конверсия, %</th></tr></thead><tbody>${goals.rows.map(g=>`<tr><td>${esc(g.name)}</td><td>${n(g.reaches)}</td><td>${n(g.conversion_rate)}</td></tr>`).join('')}</tbody></table></div><p>Показаны ${goals.rows.length} из ${goals.total} целей. ${goals.sampled?'Применена выборка.':''}</p>`:'<p>Статистика целей недоступна.</p>'}<p class="history-caveat">Достижения разных целей не складываются в последовательную воронку. Отказы — определение Метрики, не доля потерянных заявок. Для точного оттока нужна составная цель с последовательными шагами.</p></details>`;
   }
 
   function renderContentList() {
@@ -202,6 +222,7 @@
     });
 
     q('#refreshControl')?.addEventListener('click', load);
+    q('#marketingPeriod')?.addEventListener('change', load);
     load();
   });
 })();

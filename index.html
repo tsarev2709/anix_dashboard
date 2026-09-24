@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="ceo-dashboard.css" />
   <link rel="stylesheet" href="control.css" />
   <link rel="stylesheet" href="sales-forecast.css?v=20260921-signings" />
+  <link rel="stylesheet" href="workspace.css" />
 </head>
 <body class="auth-locked">
   <div class="shell">
@@ -104,7 +105,27 @@
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Длительность переходов</p><h3>Сколько занимает каждый участок сделки</h3></div><span>только завершённые переходы</span></div><div id="segmentCycles"></div></section>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Прогноз поступлений</p><h3>Взвешенный прогноз по поздним этапам</h3></div><span id="cashForecastCoverage">загрузка…</span></div><div id="cashForecast"></div></section>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Возраст этапов</p><h3>Сколько сделки лежат в каждой колонке</h3></div><span>производство не участвует в рекомендации</span></div><div id="stageAging"></div><p class="history-caveat" id="cycleCoverage"></p></section>
-        <section class="panel sales-history-panel"><div class="panel-head"><div><p class="eyebrow">История работы продавца</p><h3>Движения сделок и выполненные задачи</h3></div><span id="salesHistoryUpdated">загрузка…</span></div><div id="salesActivitySummary" class="sales-summary-grid"></div><div class="sales-main-grid history-grid"><div><h3 class="subhead">Динамика и типы действий</h3><div id="salesActivityStages"></div></div><div><h3 class="subhead">Последние действия</h3><div id="salesActivityFeed"></div></div></div><p class="history-caveat" id="salesHistoryCaveat"></p></section>
+        <section class="panel sales-history-panel">
+          <div class="panel-head"><div><p class="eyebrow">Подробный журнал amoCRM</p><h2>Что сделал каждый сотрудник</h2></div><span id="salesHistoryUpdated">Загрузка…</span></div>
+          <div class="activity-presets"><button data-activity-period="today">Сегодня</button><button data-activity-period="week">Эта неделя</button><button data-activity-period="month">Этот месяц</button></div>
+          <form id="activityFilters" class="activity-filters">
+            <label>Сотрудник<select id="activityManager" name="manager"><option value="">Все сотрудники</option></select></label>
+            <label>С<input type="date" id="activityFrom" name="from" required></label><label>По<input type="date" id="activityTo" name="to" required></label>
+            <label>Тип действия<select id="activityKind" name="kind"><option value="">Все действия</option></select></label>
+            <label>Воронка<select id="activityPipeline" name="pipeline"><option value="">Все, включая несвязанные</option></select></label>
+            <label>Карточка / задача<input name="search" type="search" placeholder="Название или текст"></label>
+            <label class="check-label"><input name="system" type="checkbox"> Входящие и системные события</label><button type="submit">Показать</button><button id="activityExport" type="button" disabled>Скачать CSV</button>
+          </form>
+          <p class="report-coverage" id="activityCoverage" aria-live="polite"></p>
+          <div id="salesActivitySummary" class="sales-summary-grid"></div>
+          <p class="history-caveat">Сегодня / неделя / месяц — все операции выбранного сотрудника и воронки. Выбранный период, таблицы и CSV учитывают также тип и поиск. Часовой пояс: Москва.</p>
+          <div id="activityKinds" class="activity-kinds"></div>
+          <details class="report-detail"><summary>Сводка по сотрудникам</summary><div id="activityManagers"></div></details>
+          <details class="report-detail"><summary>Разбивка по дням, включая дни без записей</summary><div id="activityDaily"></div></details>
+          <h3>Журнал действий</h3><div id="salesActivityFeed" aria-live="polite"></div>
+          <div class="report-pagination"><button id="activityPrev" disabled>Назад</button><span id="activityPage"></span><button id="activityNext" disabled>Далее</button></div>
+          <details class="report-detail"><summary>Правила подсчёта и ограничения</summary><p>Одна запись события — одна операция. Повторные записи одного исходящего сообщения или звонка объединяются по ID подтверждения. Создание задачи, завершение задачи и реальный звонок — разные события. Это объём зафиксированной работы, не оценка её полезности и не рабочее время.</p><p>Завершённая задача «Позвонить» не доказывает звонок. Автор берётся из события, а не из текущего ответственного по сделке. Интеграция может записывать действия под аккаунтом пользователя; достоверность авторства зависит от её настроек.</p><p>Для работы вне CRM: завершённые задачи с префиксами [Поиск контакта], [Анализ компании], [Анализ сегмента], [Аналитика], [Удаление дубля]. Это отчёт сотрудника. Автоматическое объединение дублей учитывается по событию объединения; обычное удаление не называется удалением дубля.</p><p>Воронка берётся из текущей связи карточки. Не связанные с ней контакты и компании остаются в общем журнале. Если позднее изменён текст задачи, историческое действие не переклассифицируется.</p></details>
+        </section>
         <div class="sales-main-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">Ближайшие даты</p><h3>Следующие действия по сделкам</h3></div><span>из задач amoCRM</span></div><div id="upcomingSales"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Требует внимания</p><h3>Сделки без движения более 5 дней</h3></div><span id="attentionCount"></span></div><div id="salesAttention"></div></section></div>
         <div class="sales-main-grid"><section class="panel"><div class="panel-head"><div><p class="eyebrow">Текущее состояние</p><h3>Где открытые сделки находятся сейчас</h3></div><span id="salesUpdated"></span></div><div id="salesStages"></div></section><section class="panel"><div class="panel-head"><div><p class="eyebrow">Последние изменения</p><h3>Недавно обновлённые сделки</h3></div></div><div id="recentLeads"></div></section></div>
         <section class="panel missing-sales-panel"><div class="panel-head"><div><p class="eyebrow">Качество контроля</p><h3>Каких данных не хватает для честной оценки продавца</h3></div><span>не подменяем неизвестное нулями</span></div><div id="salesMissingData" class="missing-grid"></div></section>
@@ -144,9 +165,9 @@
       </section>
 
       <section id="website" class="view">
-        <div class="control-toolbar"><div><p class="eyebrow">studio.anix-ai.pro</p><h2>Сайт и AI-консультант</h2><p>Заявки, диалоги, передача в CRM и штатные fallback-сценарии.</p></div><button id="refreshControl">Обновить</button></div>
+        <div class="control-toolbar"><div><p class="eyebrow">studio.anix-ai.pro</p><h2>Сайт и AI-консультант</h2><p>Заявки, диалоги, передача в CRM и штатные fallback-сценарии.</p></div><div class="marketing-toolbar"><label>Период Метрики <select id="marketingPeriod"><option value="7">7 дней</option><option value="30">30 дней</option><option value="90">90 дней</option></select></label><button id="refreshControl">Обновить</button></div></div>
         <div id="websiteMetricGrid" class="website-health-grid"></div>
-        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Яндекс Метрика · 103290769</p><h3>Посещаемость за 7 дней</h3></div><span>включая сегодня</span></div><div id="metrikaReport" aria-live="polite">Загрузка статистики…</div></section>
+        <section class="panel"><div class="panel-head"><div><p class="eyebrow">Яндекс Метрика · 103290769</p><h3>Посещаемость, страницы и конверсии</h3></div><span>включая сегодня · период выбран выше</span></div><div id="metrikaReport" aria-live="polite">Загрузка статистики…</div><div id="marketingDetails"></div></section>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Управление функциями</p><h3>Публичные возможности сайта</h3></div><span>секреты остаются только на сервере</span></div><div id="featureFlagGrid" class="flag-grid"></div></section>
         <section class="panel"><div class="panel-head"><div><p class="eyebrow">Состояние</p><h3>Контур Anix Control</h3></div><span id="controlLoadStatus">загрузка…</span></div><p class="history-caveat">Если метрики сайта находятся в другом Supabase-проекте, панель честно показывает «нет данных». Следующий этап — безопасная межконтурная агрегация без передачи service-role ключей в браузер.</p></section>
       </section>
@@ -168,7 +189,8 @@
   </div>
   <script src="runtime-config.js"></script>
   <script src="auth.js?v=20260921-signings"></script>
-  <script src="app.js?v=20260921-signings"></script>
+  <script src="workspace-layout.js"></script>
+  <script src="app.js?v=20260924"></script>
   <script src="sales-history.js"></script>
   <script src="sales-cycle.js"></script>
   <script src="sales-flow.js"></script>

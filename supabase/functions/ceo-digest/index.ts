@@ -1,3 +1,5 @@
+import { readAll } from '../_shared/forecast-data.ts';
+import { timestampMs as ms, daysSince } from '../_shared/time.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const headers = {
@@ -11,13 +13,7 @@ const SOURCE_CRM = 'amocrm';
 const SOURCE_PM = 'yougile';
 const norm = (value: unknown) => String(value || '').trim().toLocaleLowerCase('ru-RU').replace(/ё/g, 'е');
 const key = (pipelineId: unknown, statusId: unknown) => `${Number(pipelineId || 0)}:${Number(statusId || 0)}`;
-const ms = (value: unknown) => {
-  if (!value) return 0;
-  const parsed = new Date(String(value)).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-};
 const iso = (value: unknown) => ms(value) ? new Date(ms(value)).toISOString() : null;
-const daysSince = (value: unknown, nowMs: number) => Math.max(0, Math.floor((nowMs - ms(value)) / DAY));
 const average = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 const median = (values: number[]) => {
   if (!values.length) return null;
@@ -50,9 +46,9 @@ Deno.serve(async (req: Request) => {
 
   try {
     const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const complete = async (table: string, columns: string, source: string, order = 'external_id') => ({ data: await readAll(db, table, columns, order, source), error: null });
     const now = new Date();
     const nowMs = now.getTime();
-    const historyFrom = new Date(nowMs - 180 * DAY).toISOString();
     const conversionFrom = nowMs - 90 * DAY;
 
     const [
@@ -73,18 +69,18 @@ Deno.serve(async (req: Request) => {
       telegramInboxResult,
       credentialResult,
     ] = await Promise.all([
-      db.from('crm_leads').select('external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,raw').eq('source_slug', SOURCE_CRM).limit(10_000),
-      db.from('crm_statuses').select('external_id,pipeline_external_id,name,sort_order,color').eq('source_slug', SOURCE_CRM).order('sort_order').limit(5_000),
-      db.from('crm_pipelines').select('external_id,name,is_main,is_archive').eq('source_slug', SOURCE_CRM).limit(1_000),
-      db.from('crm_users').select('external_id,name,email,is_active').eq('source_slug', SOURCE_CRM).limit(5_000),
-      db.from('crm_tasks').select('external_id,entity_external_id,entity_type,responsible_user_external_id,text,result_text,is_completed,complete_till,created_at_source,updated_at_source').eq('source_slug', SOURCE_CRM).limit(30_000),
-      db.from('crm_events').select('external_id,event_type,entity_external_id,entity_type,created_at_source').eq('source_slug', SOURCE_CRM).gte('created_at_source', historyFrom).order('created_at_source', { ascending: false }).limit(30_000),
-      db.from('crm_lead_stage_events').select('lead_external_id,pipeline_external_id,status_external_id,observed_at').eq('source_slug', SOURCE_CRM).gte('observed_at', historyFrom).order('observed_at', { ascending: true }).limit(30_000),
-      db.from('pm_projects').select('external_id,title,is_archived,raw,synced_at').eq('source_slug', SOURCE_PM).limit(5_000),
-      db.from('pm_boards').select('external_id,project_external_id,title').eq('source_slug', SOURCE_PM).limit(10_000),
-      db.from('pm_columns').select('external_id,board_external_id,title,position').eq('source_slug', SOURCE_PM).limit(10_000),
-      db.from('pm_tasks').select('external_id,title,project_external_id,board_external_id,column_external_id,assigned_user_external_ids,deadline_at,completed,is_archived,created_at_source,updated_at_source,synced_at,raw').eq('source_slug', SOURCE_PM).limit(30_000),
-      db.from('pm_users').select('external_id,name,email,is_active').eq('source_slug', SOURCE_PM).limit(5_000),
+      complete('crm_leads', 'external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,raw', SOURCE_CRM),
+      complete('crm_statuses', 'external_id,pipeline_external_id,name,sort_order,color', SOURCE_CRM),
+      complete('crm_pipelines', 'external_id,name,is_main,is_archive', SOURCE_CRM),
+      complete('crm_users', 'external_id,name,email,is_active', SOURCE_CRM),
+      complete('crm_tasks', 'external_id,entity_external_id,entity_type,responsible_user_external_id,text,result_text,is_completed,complete_till,created_at_source,updated_at_source', SOURCE_CRM),
+      complete('crm_events', 'external_id,event_type,entity_external_id,entity_type,created_at_source', SOURCE_CRM),
+      complete('crm_lead_stage_events', 'id,lead_external_id,pipeline_external_id,status_external_id,observed_at', SOURCE_CRM, 'id'),
+      complete('pm_projects', 'external_id,title,is_archived,raw,synced_at', SOURCE_PM),
+      complete('pm_boards', 'external_id,project_external_id,title', SOURCE_PM),
+      complete('pm_columns', 'external_id,board_external_id,title,position', SOURCE_PM),
+      complete('pm_tasks', 'external_id,title,project_external_id,board_external_id,column_external_id,assigned_user_external_ids,deadline_at,completed,is_archived,created_at_source,updated_at_source,synced_at,raw', SOURCE_PM),
+      complete('pm_users', 'external_id,name,email,is_active', SOURCE_PM),
       db.from('data_sources').select('slug,status,last_success_at,last_attempt_at,last_error,freshness_minutes').in('slug', [SOURCE_CRM, SOURCE_PM, 'tochka', 'telegram_tasks']).limit(10),
       db.from('management_decisions').select('id,title,hypothesis,decided_at,owner_name,check_deadline,expected_result,metric_name,actual_result,status,next_review_at,related_entity_type,related_entity_external_id').in('status', ['planned', 'in_progress']).limit(1_000),
       db.from('telegram_task_inbox').select('id,status,normalized_title,original_text,error,created_at,processed_at,yougile_task_id,source_url').in('status', ['processing', 'failed']).order('created_at', { ascending: false }).limit(1_000),
@@ -163,7 +159,7 @@ Deno.serve(async (req: Request) => {
       const currentKey = key(lead.pipeline_external_id, lead.status_external_id);
       const entries = history.filter(event => key(event.pipeline_external_id, event.status_external_id) === currentKey);
       if (entries.length) return { at: entries[entries.length - 1].observed_at, estimated: false };
-      return { at: lead.updated_at_source || lead.created_at_source || now.toISOString(), estimated: true };
+      return { at: lead.updated_at_source || lead.created_at_source || null, estimated: true };
     };
 
     const dealItems: any[] = openLeads.map((lead: any) => {
@@ -254,7 +250,7 @@ Deno.serve(async (req: Request) => {
         }
 
         if (!current.length && !entrants.size) continue;
-        const ages = current.map(item => Number(item.stage_days || 0));
+        const ages = current.filter(item => item.stage_days !== null).map(item => Number(item.stage_days));
         const completedMedian = median(completedDurations);
         const normalDays = completedDurations.length >= 3 ? Math.max(3, Math.round(Number(completedMedian || 0) * 1.5)) : 14;
         const overNorm = current.filter(item => Number(item.stage_days || 0) > normalDays);
@@ -277,7 +273,7 @@ Deno.serve(async (req: Request) => {
           over_norm_count: overNorm.length,
           completed_duration_sample: completedDurations.length,
           age_buckets: {
-            '0_7': current.filter(item => item.stage_days <= 7).length,
+            '0_7': current.filter(item => item.stage_days !== null && item.stage_days <= 7).length,
             '8_14': current.filter(item => item.stage_days > 7 && item.stage_days <= 14).length,
             '15_30': current.filter(item => item.stage_days > 14 && item.stage_days <= 30).length,
             '30_plus': current.filter(item => item.stage_days > 30).length,

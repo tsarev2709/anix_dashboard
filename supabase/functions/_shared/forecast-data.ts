@@ -2,11 +2,11 @@ import { buildForecast, stageProbabilities } from './sales-forecast.mjs';
 import { calendarDate } from './forecast-fields.mjs';
 
 // Keyset pagination avoids silently truncating at PostgREST's default 1,000 rows.
-export async function readAll(db: any, table: string, columns: string, order = 'external_id') {
+export async function readAll(db: any, table: string, columns: string, order = 'external_id', source = 'amocrm') {
   const rows: any[] = [];
   let cursor: any = null;
   for (let page = 0; page < 200; page++) {
-    let query = db.from(table).select(columns).eq('source_slug', 'amocrm').order(order).limit(1000);
+    let query = db.from(table).select(columns).eq('source_slug', source).order(order).limit(1000);
     if (cursor !== null) query = query.gt(order, cursor);
     const { data, error } = await query;
     if (error) throw new Error(`${table}: ${error.message}`);

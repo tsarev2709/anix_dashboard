@@ -59,11 +59,16 @@ const manualCount = snapshot.dataAudit.filter(x => x.status === 'manual').length
 qs('#coverageLabel').textContent = `Покрытие данных: ${Math.round((measuredCount + manualCount * .5) / snapshot.dataAudit.length * 100)}%`;
 qs('#dataAudit').innerHTML = snapshot.dataAudit.map(item => `<div class="audit-row"><strong>${esc(item.metric)}</strong><span class="audit-status ${item.status}">${esc(item.label)}</span><p>${esc(item.reason)}</p></div>`).join('');
 
-const titles = { forecast: 'Прогноз месяца', overview: 'Сегодня', weekly: 'Неделя', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Проекты', finance: 'Касса', decisions: 'Решения', data: 'Качество данных', sources: 'Интеграции' };
+const titles = { marketing: 'Маркетинг', business: 'Бизнес-модель', forecast: 'Прогноз месяца', overview: 'Сегодня', weekly: 'Неделя', content: 'Контент Anix', website: 'Сайт и AI-консультант', sales: 'Управление продажами', production: 'Проекты', finance: 'Касса', decisions: 'Решения', data: 'Качество данных', sources: 'Интеграции' };
 function switchView(view) {
+  const aliases = {website:'marketing',finance:'business',decisions:'business',forecast:'sales',weekly:'overview'};
+  const requested = view; view = aliases[view] || view;
   document.querySelectorAll('.view').forEach(el => el.classList.toggle('active', el.id === view));
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  qs('#page-title').textContent = titles[view];
+  qs('#page-title').textContent = titles[view] || 'Anix';
+  const subtab={forecast:'sales-plan',finance:'business-money',decisions:'business-decisions'}[requested];
+  if(subtab) document.getElementById(subtab+'-tab')?.click();
+  history.replaceState(null,'','#'+requested);
 }
 window.ANIX_NAVIGATE = switchView;
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
@@ -208,3 +213,5 @@ qs('#exportBtn').addEventListener('click', () => {
   anchor.click();
   URL.revokeObjectURL(url);
 });
+
+if (titles[location.hash.slice(1)]) switchView(location.hash.slice(1));

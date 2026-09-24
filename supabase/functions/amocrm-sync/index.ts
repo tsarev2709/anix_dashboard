@@ -131,14 +131,28 @@ Deno.serve(async req => {
     }
 
     let eventsRead = 0;
-    for (const eventFilter of ['&filter[entity][]=lead&filter[entity][]=task', '&filter[type]=outgoing_call,outgoing_mail,outgoing_chat_message,outgoing_sms']) {
-    for (let page = 1; page <= 100; page++) {
-      const body = await api(`/api/v4/events?limit=100&page=${page}&filter[created_at][from]=${from}${eventFilter}&with=lead_name`); const events = body?._embedded?.events || []; if (!events.length) break;
-      const rows = dedupe(events.map((e: any) => ({ source_slug: 'amocrm', external_id: String(e.id), event_type: e.type || 'unknown', entity_external_id: e.entity_id || null, entity_type: e.entity_type || null, created_by_external_id: e.created_by || null, created_at_source: iso(e.created_at) || new Date().toISOString(), value_before: e.value_before || [], value_after: e.value_after || [], raw: e, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_events');
-      eventsRead += rows.length; await upsert('crm_events', rows); if (!body?._links?.next) break; if (page === 100) throw new Error('amoCRM pagination limit reached');
+    const { data: coverage, error: coverageError } = await db.from('crm_activity_sync_state').select('*').eq('source_slug', 'amocrm').maybeSingle();
+    if (coverageError) throw coverageError;
+    const liveFrom = coverage?.live_from || new Date(from * 1000).toISOString();
+    const historyFrom = coverage?.history_from || new Date(Date.now() - 180 * 86400000).toISOString();
+    const backfillFrom = coverage?.backfilled_from || liveFrom;
+    const backfillTo = new Date(Math.max(new Date(backfillFrom).getTime() - 7 * 86400000, new Date(historyFrom).getTime())).toISOString();
+    const windows = [{ from, to: Math.floor(Date.now()/1000) }];
+    if (backfillFrom > historyFrom) windows.push({ from: Math.floor(new Date(backfillTo).getTime()/1000), to: Math.floor(new Date(backfillFrom).getTime()/1000) });
+    for (const window of windows) {
+      for (let page = 1; page <= 100; page++) {
+        // No entity/type filter: include contact and company edits, merges and communications.
+        const body = await api(`/api/v4/events?limit=100&page=${page}&filter[created_at][from]=${window.from}&filter[created_at][to]=${window.to}&with=lead_name,contact_name,company_name`);
+        const events = body?._embedded?.events || []; if (!events.length) break;
+        const rows = dedupe(events.map((e: any) => ({ source_slug: 'amocrm', external_id: String(e.id), event_type: e.type || 'unknown', entity_external_id: e.entity_id || null, entity_type: e.entity_type || null, created_by_external_id: e.created_by || null, created_at_source: iso(e.created_at) || new Date().toISOString(), value_before: e.value_before || [], value_after: e.value_after || [], raw: e, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_events');
+        eventsRead += rows.length; await upsert('crm_events', rows);
+        if (!body?._links?.next) break;
+        if (page === 100) throw new Error('amoCRM events pagination limit reached; history is incomplete');
+      }
     }
+    const { error: checkpointError } = await db.from('crm_activity_sync_state').upsert({ source_slug:'amocrm', history_from:historyFrom, backfilled_from:backfillTo, live_from:liveFrom, updated_at:new Date().toISOString() });
+    if(checkpointError) throw checkpointError;
 
-    }
     const forecastSnapshots = await captureForecastSnapshots(db);
     const read = recordsRead + usersRead + pipelineRows.length + rawStatuses.length + tasksRead + eventsRead;
     const written = recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten + tasksRead + eventsRead;
