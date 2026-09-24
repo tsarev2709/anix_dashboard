@@ -50,6 +50,7 @@ jobs:
             supabase/migrations/202609030001_telegram_task_capture.sql
             supabase/migrations/202609180001_sales_forecast.sql
             supabase/migrations/20260921163405_forecast_signings_and_activity.sql
+            supabase/migrations/20260924110000_activity_coverage.sql
           )
 
           for migration in "${migrations[@]}"; do
