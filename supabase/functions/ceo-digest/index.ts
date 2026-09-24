@@ -118,6 +118,7 @@ Deno.serve(async (req: Request) => {
     const sourceMap = new Map<string, any>((sourcesResult.data || []).map((source: any) => [source.slug, source]));
     const accountDomain = credentialResult.data?.account_domain || null;
 
+    stageEvents.sort((a: any, b: any) => ms(a.observed_at) - ms(b.observed_at));
     const stageHistoryByLead = new Map<number, any[]>();
     for (const event of stageEvents) {
       const leadId = Number(event.lead_external_id);
@@ -135,6 +136,7 @@ Deno.serve(async (req: Request) => {
 
     const tasksByLead = new Map<number, any[]>();
     for (const task of crmTasks) {
+      if (!['lead', 'leads'].includes(task.entity_type)) continue;
       const leadId = Number(task.entity_external_id || 0);
       if (!leadId) continue;
       if (!tasksByLead.has(leadId)) tasksByLead.set(leadId, []);
