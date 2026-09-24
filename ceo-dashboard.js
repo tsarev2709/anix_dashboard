@@ -47,7 +47,7 @@
       ['info', 'информация', summary.info || 0],
     ].map(([tone, label, value]) => `<div class="attention-counter ${tone}"><strong>${num(value)}</strong><span>${label}</span></div>`).join('');
 
-    const visible = showAll ? alerts : alerts.slice(0, 7);
+    const visible = showAll ? alerts : alerts.slice(0, 5);
     q('#ceoAlerts').innerHTML = visible.length ? visible.map(alert => `
       <article class="ceo-alert ${esc(alert.severity)}">
         <span class="ceo-alert-severity" aria-hidden="true"></span>
@@ -56,7 +56,7 @@
         <div class="ceo-alert-action"><strong>Следующее действие</strong><small>${esc(alert.next_action)}</small></div>
         <div class="ceo-alert-buttons"><button type="button" class="ceo-link-button" data-drilldown="${esc(alert.drilldown_key)}">Открыть</button>${alert.external_url ? `<a class="ceo-link-button" href="${esc(alert.external_url)}" target="_blank" rel="noopener">${alert.domain === 'operations' ? 'Telegram' : 'amoCRM'} ↗</a>` : ''}</div>
       </article>`).join('') : '<div class="ceo-empty">Исключений по доступным данным нет. Финансовый контур пока неполон, поэтому отсутствие финансовых алертов не означает отсутствие обязательств.</div>';
-    q('#showAllAlerts').hidden = alerts.length <= 7;
+    q('#showAllAlerts').hidden = alerts.length <= 5;
     q('#showAllAlerts').textContent = showAll ? 'Свернуть список' : `Показать приоритетные исключения (${alerts.length} из ${summary.total || alerts.length})`;
   }
 
@@ -64,7 +64,7 @@
     const sales = payload.sales.summary;
     const projects = payload.projects.summary;
     q('#ceoKpiGrid').innerHTML = [
-      { label: 'Действия сегодня', value: payload.alert_summary.critical, note: `${payload.alert_summary.risk} дополнительных зон риска`, tone: payload.alert_summary.critical ? 'critical' : '', drilldown: 'alerts' },
+      { label: 'Требуют внимания', value: payload.alert_summary.critical, note: `${payload.alert_summary.risk} дополнительных зон риска`, tone: payload.alert_summary.critical ? 'critical' : '', drilldown: 'alerts' },
       { label: 'Открытые сделки', value: sales.open_deals, note: `воронка ${rub(sales.pipeline_amount)}`, drilldown: 'open' },
       { label: 'Без движения >14 дней', value: sales.stalled_14_ratio, note: `${sales.stalled_14_count} сделок · ${comparisonLine(payload.sales.comparisons.stalled_14_ratio, 'percent')}`, tone: sales.stalled_14_count ? 'risk' : '', drilldown: 'stalled14', format: 'percent' },
       { label: 'Проекты с просрочками', value: projects.overdue_projects, note: `${projects.deadline_week} проектов с дедлайном в 7 дней`, tone: projects.overdue_projects ? 'critical' : '', drilldown: 'projects_overdue' },

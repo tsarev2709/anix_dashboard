@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          functions=(source-status sales-summary sales-history sales-cycle production-summary control-center ceo-digest sales-forecast)
+          functions=(source-status sales-summary sales-history sales-activity sales-cycle production-summary control-center ceo-digest sales-forecast)
           for function_name in "${functions[@]}"; do
             tmp_file=$(mktemp)
             http_code=$(curl --silent --show-error \

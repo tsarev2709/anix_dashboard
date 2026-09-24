@@ -31,3 +31,13 @@ test('network exception is sanitized', async () => {
   const r = await createMetrikaReader()({ token: 'secret', fetcher: async () => { throw new Error('secret'); } });
   assert.equal(r.error, 'unavailable');
 });
+test('detailed marketing reports isolate failing slices, scope cache by period and retain goals', async()=>{
+ let calls=0; const read=createMetrikaReader();
+ const fetcher=async url=>{calls++;const u=new URL(url);
+ if(u.pathname.includes('/management/'))return new Response(JSON.stringify({goals:[{id:1,name:'Заявка'}]}));
+ if(u.searchParams.get('metrics').includes('goal1'))return new Response(JSON.stringify({totals:[3,25]}));
+ if(u.searchParams.get('dimensions')==='ym:s:deviceCategory')return new Response('unavailable',{status:500});
+ return new Response(JSON.stringify(body));};
+ const r=await read({token:'secret',fetcher,detailed:true,days:30});assert.equal(r.period_days,30);assert.equal(r.details.pages.available,true);assert.equal(r.details.devices.available,false);assert.equal(r.goals.rows[0].reaches,3);const c=calls;
+ await read({token:'secret',fetcher,detailed:true,days:7});assert.ok(calls>c);
+});
