@@ -1,3 +1,4 @@
+import { salesAttention, attentionQueue } from '../_shared/attention-policy.mjs';
 import { readAll } from '../_shared/forecast-data.ts';
 import { timestampMs as ms, daysSince } from '../_shared/time.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -69,7 +70,7 @@ Deno.serve(async (req: Request) => {
       telegramInboxResult,
       credentialResult,
     ] = await Promise.all([
-      complete('crm_leads', 'external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,raw', SOURCE_CRM),
+      complete('crm_leads', 'external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,expected_close_date,raw', SOURCE_CRM),
       complete('crm_statuses', 'external_id,pipeline_external_id,name,sort_order,color', SOURCE_CRM),
       complete('crm_pipelines', 'external_id,name,is_main,is_archive', SOURCE_CRM),
       complete('crm_users', 'external_id,name,email,is_active', SOURCE_CRM),
@@ -152,7 +153,7 @@ Deno.serve(async (req: Request) => {
     const isLateStage = (name: string) => /кп|предлож|переговор|согласован|договор|счет|счёт|предоплат|постоплат|производств/.test(norm(name));
     const isWonStage = (name: string) => /успеш|реализован|выигран|closed won/.test(norm(name));
 
-    const openLeads: any[] = leads.filter((lead: any) => !lead.closed_at_source);
+    const openLeads: any[] = leads.filter((lead: any) => !lead.closed_at_source && ![142,143].includes(Number(lead.status_external_id)) && !pipelineInfo(lead)?.is_archive);
     const pricedDeals = openLeads.map((lead: any) => Number(lead.price || 0)).filter((price: number) => price > 0);
     const bigDealThreshold = Math.max(300_000, percentile(pricedDeals, .75) || 0);
 
@@ -188,6 +189,7 @@ Deno.serve(async (req: Request) => {
         stage_sort: Number(status?.sort_order || 0),
         responsible_user_name: crmUserMap.get(Number(lead.responsible_user_external_id || 0))?.name || `Пользователь #${lead.responsible_user_external_id || '—'}`,
         created_at: lead.created_at_source,
+        expected_close_date: lead.expected_close_date,
         last_activity_at: lastActivityAt ? new Date(lastActivityAt).toISOString() : null,
         stale_days: lastActivityAt ? daysSince(lastActivityAt, nowMs) : null,
         entered_stage_at: stageEntry.at,
@@ -391,15 +393,10 @@ Deno.serve(async (req: Request) => {
     const stageNormalMap = new Map(funnelHealth.map(stage => [stage.id, Number(stage.normal_days || 14)]));
     const alerts: any[] = [];
     for (const item of dealItems) {
-      const reasons: string[] = [];
-      const normalDays = stageNormalMap.get(key(item.pipeline_external_id, item.status_external_id)) || 14;
-      if (item.overdue_task_days > 0) reasons.push(`задача просрочена на ${item.overdue_task_days} дн.`);
-      if (Number(item.stale_days || 0) > 14) reasons.push(`нет активности ${item.stale_days} дн.`);
-      if (!item.has_next_step && (Number(item.stale_days || 0) > 3 || isLateStage(item.stage_name) || item.price >= bigDealThreshold)) reasons.push('не назначен следующий шаг');
-      if (item.stage_days > normalDays && Number(item.stale_days || 0) <= 14) reasons.push(`на этапе ${item.stage_days} дн. при норме ${normalDays}`);
-      if (!reasons.length) continue;
-
-      const critical = item.overdue_task_days > 0 || Number(item.stale_days || 0) > 30 || (!item.has_next_step && isLateStage(item.stage_name) && item.price > 0);
+      const policy = salesAttention(item, nowMs);
+      if (policy.bucket !== 'attention') continue;
+      const reasons = policy.reasons;
+      const critical = policy.severity === 'critical';
       const action = item.overdue_task_days > 0
         ? 'Закрыть или переназначить просроченную задачу и зафиксировать результат контакта.'
         : !item.has_next_step
@@ -409,6 +406,7 @@ Deno.serve(async (req: Request) => {
             : 'Проверить актуальность сделки: вернуть в работу, сменить этап или закрыть.';
       alerts.push({
         id: `deal-${item.external_id}`,
+        priority_score: policy.score,
         severity: critical ? 'critical' : 'risk',
         domain: 'sales',
         title: `Сделка «${item.name}» требует движения`,
@@ -523,7 +521,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    alerts.sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || Number(b.amount || 0) - Number(a.amount || 0) || Number(b.days || 0) - Number(a.days || 0));
+    const queue = attentionQueue(alerts, 100);
+    const backlog = dealItems.filter(item => salesAttention(item, nowMs).bucket === 'backlog');
 
     const generatedFrom: string[] = [sourceMap.get(SOURCE_CRM)?.last_success_at, sourceMap.get(SOURCE_PM)?.last_success_at].filter(Boolean).sort();
     const dataAsOf = generatedFrom.length ? generatedFrom[0] : now.toISOString();
@@ -559,16 +558,12 @@ Deno.serve(async (req: Request) => {
         tochka: sourceMap.get('tochka') || null,
         telegram_tasks: sourceMap.get('telegram_tasks') || null,
       },
-      alert_summary: {
-        total: alerts.length,
-        critical: alerts.filter(alert => alert.severity === 'critical').length,
-        risk: alerts.filter(alert => alert.severity === 'risk').length,
-        info: alerts.filter(alert => alert.severity === 'info').length,
-      },
-      alerts: alerts.slice(0, 20),
+      alert_summary: {...queue.summary, backlog: backlog.length},
+      alerts: queue.items,
       sales: {
         summary: {
           open_deals: dealItems.length,
+          dormant_backlog: backlog.length,
           priced_open_deals: dealItems.filter(item => item.price > 0).length,
           pipeline_amount: sumDeals(dealItems),
           stalled_14_count: stale14.length,
@@ -596,6 +591,7 @@ Deno.serve(async (req: Request) => {
         },
         funnel_health: funnelHealth,
         deal_lists: {
+          backlog,
           open: dealItems,
           stalled14: stale14,
           stalled30: stale30,

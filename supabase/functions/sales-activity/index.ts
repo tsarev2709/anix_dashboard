@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { readAll } from '../_shared/forecast-data.ts';
+import { activityWindow } from '../_shared/activity-window.mjs';
 import { activityLedger } from '../_shared/activity-ledger.mjs';
 const headers = { 'Content-Type':'application/json; charset=utf-8', 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type' };
 const json = (body: unknown, status=200) => new Response(JSON.stringify(body), {status,headers});
@@ -14,8 +15,10 @@ Deno.serve(async req => {
   const {data:profile}=await db.from('admin_profiles').select('role').eq('user_id',auth.user.id).maybeSingle();
   if(!profile?.role&&auth.user.email?.toLowerCase()!=='studio@anix-ai.pro') return json({ok:false,error:'access_denied'},403);
   const params=Object.fromEntries(new URL(req.url).searchParams);
+  const window=activityWindow(params);
+  const eventScope=(query: any)=>query.gte('created_at_source',window.since).lt('created_at_source',window.until);
   const [events,tasks,leads,users,pipelines,statuses,account,source,coverage]=await Promise.all([
-   readAll(db,'crm_events','external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source,value_before,value_after,raw'),
+   readAll(db,'crm_events','external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source,value_before,value_after','external_id','amocrm',eventScope),
    readAll(db,'crm_tasks','external_id,entity_external_id,entity_type,text,result_text,updated_at_source'),
    readAll(db,'crm_leads','external_id,name,pipeline_external_id'),readAll(db,'crm_users','external_id,name'),readAll(db,'crm_pipelines','external_id,name'),readAll(db,'crm_statuses','external_id,name'),
    db.from('integration_credentials').select('account_domain').eq('source_slug','amocrm').single(),
