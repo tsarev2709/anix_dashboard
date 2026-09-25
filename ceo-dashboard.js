@@ -39,8 +39,8 @@
   function renderAlerts() {
     const alerts = payload?.alerts || [];
     const summary = payload?.alert_summary || {};
-    q('#attentionHeadline').textContent = alerts.length ? `${summary.critical || 0} требуют действия, ${summary.risk || 0} — зона риска` : 'Критичных исключений не найдено';
-    q('#attentionSubhead').textContent = alerts.length ? 'Список ранжирован по критичности, сумме и длительности. Красный — только когда действие нельзя откладывать.' : 'По доступным данным продажи, проекты и решения не дают критических сигналов.';
+    q('#attentionHeadline').textContent = alerts.length ? `${summary.total || 0} приоритетов из лимита ${summary.limit || 100}` : 'Критичных исключений не найдено';
+    q('#attentionSubhead').textContent = alerts.length ? `Срочные: ${summary.critical || 0}. Плановые: ${summary.risk || 0}. За пределами лимита: ${summary.deferred || 0}, из них срочных ${summary.deferred_critical || 0}. Старая база для отдельного разбора: ${summary.backlog || 0}.` : 'По доступным данным продажи, проекты и решения не дают критических сигналов.';
     q('#attentionCounters').innerHTML = [
       ['critical', 'действовать', summary.critical || 0],
       ['risk', 'риск', summary.risk || 0],
@@ -64,7 +64,7 @@
     const sales = payload.sales.summary;
     const projects = payload.projects.summary;
     q('#ceoKpiGrid').innerHTML = [
-      { label: 'Требуют внимания', value: payload.alert_summary.critical, note: `${payload.alert_summary.risk} дополнительных зон риска`, tone: payload.alert_summary.critical ? 'critical' : '', drilldown: 'alerts' },
+      { label: 'Требуют внимания', value: payload.alert_summary.total, note: `${payload.alert_summary.critical} срочных · лимит 100 на команду`, tone: payload.alert_summary.critical ? 'critical' : '', drilldown: 'alerts' },
       { label: 'Открытые сделки', value: sales.open_deals, note: `воронка ${rub(sales.pipeline_amount)}`, drilldown: 'open' },
       { label: 'Без движения >14 дней', value: sales.stalled_14_ratio, note: `${sales.stalled_14_count} сделок · ${comparisonLine(payload.sales.comparisons.stalled_14_ratio, 'percent')}`, tone: sales.stalled_14_count ? 'risk' : '', drilldown: 'stalled14', format: 'percent' },
       { label: 'Проекты с просрочками', value: projects.overdue_projects, note: `${projects.deadline_week} проектов с дедлайном в 7 дней`, tone: projects.overdue_projects ? 'critical' : '', drilldown: 'projects_overdue' },
@@ -84,6 +84,17 @@
       { label: 'На этапах оплаты', value: sales.payment_stage_amount, note: 'не равно фактически ожидаемой оплате', drilldown: 'payments', format: 'money' },
       { label: 'Без следующего шага', value: sales.without_next_step, note: 'нет незавершённой задачи amoCRM', tone: sales.without_next_step ? 'risk' : '', drilldown: 'without_next_step' },
     ].map(metricButton).join('');
+  }
+
+  function renderSalesDiagnosis() {
+    let node=q('#salesDiagnosis');
+    if(!node){node=document.createElement('section');node.id='salesDiagnosis';node.className='panel';q('#sales-results').prepend(node);}
+    const all=payload.sales.deal_lists.open||[], asOf=new Date(payload.generated_at).getTime();
+    const count=fn=>all.filter(fn).length;
+    const ages=[['0–7 дней',d=>d.stale_days!==null&&d.stale_days<=7],['8–14 дней',d=>d.stale_days>7&&d.stale_days<=14],['15–30 дней',d=>d.stale_days>14&&d.stale_days<=30],['31–60 дней',d=>d.stale_days>30&&d.stale_days<=60],['Больше 60 дней',d=>d.stale_days>60],['Дата неизвестна',d=>d.stale_days===null]];
+    const overdue=count(d=>d.overdue_task_days>0), missing=count(d=>!d.has_next_step), planned=count(d=>Date.parse(d.next_step_at)>asOf),unknown=count(d=>!d.expected_close_date);
+    const groups=new Map();for(const d of all){const key=d.pipeline_name||'Не определена';const g=groups.get(key)||{name:key,count:0,idle:0,missing:0,overdue:0};g.count++;g.idle+=d.stale_days>30?1:0;g.missing+=!d.has_next_step?1:0;g.overdue+=d.overdue_task_days>0?1:0;groups.set(key,g);}
+    node.innerHTML=`<h3>Диагностика продаж по датам</h3><p>На ${esc(dt(payload.generated_at))}: ${all.length} открытых карточек; ${overdue} с задачами, просроченными минимум на сутки; ${missing} без следующего шага; ${planned} с будущей задачей. Показатели пересекаются.</p><div class="age-buckets">${ages.map(([label,fn])=>`<div class="age-bucket"><strong>${count(fn)}</strong><small>${esc(label)}</small></div>`).join('')}</div><p class="history-caveat">Это время после последнего обновления карточки или задачи, не время после последнего разговора с клиентом. Пустая дата не считается простоем.</p><div class="report-scroll"><table class="report-table"><thead><tr><th>Воронка</th><th>Открыто</th><th>Простой &gt;30 дн.</th><th>Без шага</th><th>Просрочено ≥1 дн.</th></tr></thead><tbody>${[...groups.values()].map(g=>`<tr><td>${esc(g.name)}</td><td>${g.count}</td><td>${g.idle}</td><td>${g.missing}</td><td>${g.overdue}</td></tr>`).join('')}</tbody></table></div><p>Без плановой даты договора: ${unknown}. Длительность этапа оценочная у ${count(d=>d.stage_age_estimated)} карточек — точной истории входа нет.</p><details><summary>Как отбираются 100 приоритетов</summary><p>Сначала просроченные обязательства и договоры с датой от 30 дней назад до 7 дней вперёд. Затем поздние этапы без следующего шага или обновлений, задачи на ближайшие 48 часов и активные ранние сделки без шага. Давняя ранняя база (&gt;60 дней) — отдельный плановый разбор, кроме карточек с ближайшей задачей. Будущий согласованный шаг снимает сигнал простоя. Бюджет используется для сортировки внутри приоритета. Пороги — рабочая политика команды, а не статистическая норма.</p></details><button class="ceo-link-button" data-drilldown="backlog">Разобрать старую базу (${payload.alert_summary.backlog||0})</button>`;
   }
 
   function inlineDealList(deals) {
@@ -180,6 +191,7 @@
     renderAlerts();
     renderHeadlineKpis();
     renderStalled();
+    renderSalesDiagnosis();
     renderFunnel();
     renderProjects();
     renderCash();
@@ -253,7 +265,7 @@
       return;
     }
     const labels = {
-      open: 'Все открытые сделки', stalled14: 'Сделки без движения более 14 дней', stalled30: 'Сделки без движения более 30 дней', without_next_step: 'Сделки без следующего шага', approval: 'Сделки на согласовании с клиентом', contracts: 'Договор / счёт / ТЗ', payments: 'Сделки на этапах оплаты', projects_all: 'Активные проекты', projects_overdue: 'Проекты с просрочками', projects_week: 'Проекты с дедлайном в 7 дней', projects_stale: 'Проекты без обновлений', projects_unassigned: 'Проекты без назначенного исполнителя', projects_waiting_client: 'Проекты, где ждём материалы клиента', projects_client_waits: 'Проекты, где клиент ждёт Anix',
+      backlog: 'Ранняя база без обновлений более 60 дней', open: 'Все открытые сделки', stalled14: 'Сделки без движения более 14 дней', stalled30: 'Сделки без движения более 30 дней', without_next_step: 'Сделки без следующего шага', approval: 'Сделки на согласовании с клиентом', contracts: 'Договор / счёт / ТЗ', payments: 'Сделки на этапах оплаты', projects_all: 'Активные проекты', projects_overdue: 'Проекты с просрочками', projects_week: 'Проекты с дедлайном в 7 дней', projects_stale: 'Проекты без обновлений', projects_unassigned: 'Проекты без назначенного исполнителя', projects_waiting_client: 'Проекты, где ждём материалы клиента', projects_client_waits: 'Проекты, где клиент ждёт Anix',
     };
     const dialog = ensureDialog();
     const projectMode = key.startsWith('project') || key.startsWith('projects_');

@@ -52,9 +52,11 @@ export function activityLedger(data, filters = {}, now = new Date()) {
  const scoped=all.filter(a=>(!manager||a.user_id===manager)&&(!pipeline||Number(a.pipeline_id)===pipeline));
  const selected=scoped.filter(a=>a.day>=from&&a.day<=to&&(!filters.kind||a.kind===filters.kind)&&(!filters.search||`${a.entity_name} ${a.task_text||''} ${a.detail} ${a.label}`.toLowerCase().includes(filters.search.toLowerCase()))&&(filters.system==='1'||a.human));
  const count=xs=>({operations:xs.filter(x=>x.human).length,touches:xs.filter(x=>x.touch).length,tasks:xs.filter(x=>x.event_type==='task_completed'&&x.human).length,entities:new Set(xs.filter(x=>x.human).map(x=>`${x.entity_type}:${x.entity_id}`)).size});
+ const daysMap=new Map(),usersMap=new Map();
+ for(const action of selected){if(!daysMap.has(action.day))daysMap.set(action.day,[]);daysMap.get(action.day).push(action);if(!usersMap.has(action.user_id))usersMap.set(action.user_id,[]);usersMap.get(action.user_id).push(action);}
  const daily=[];
- for(let ms=Date.parse(from+'T00:00:00+03:00');ms<=Date.parse(to+'T00:00:00+03:00');ms+=DAY){const date=moscowDay(ms);daily.push({date,...count(selected.filter(x=>x.day===date))});}
- const managers=[...users.values()].map(u=>({id:u.external_id,name:u.name,...count(selected.filter(x=>x.user_id===Number(u.external_id)))}));
+ for(let ms=Date.parse(from+'T00:00:00+03:00');ms<=Date.parse(to+'T00:00:00+03:00');ms+=DAY){const date=moscowDay(ms);daily.push({date,...count(daysMap.get(date)||[])});}
+ const managers=[...users.values()].map(u=>({id:u.external_id,name:u.name,...count(usersMap.get(Number(u.external_id))||[])}));
  const by_kind=Object.entries(selected.reduce((m,a)=>(m[a.kind]=(m[a.kind]||0)+1,m),{})).map(([kind,count])=>({kind,label:activityLabels[kind]||kind,count})).sort((a,b)=>b.count-a.count);
  return {from,to,timezone:'Europe/Moscow',summary:count(selected),today:count(scoped.filter(x=>x.day===today)),week:count(scoped.filter(x=>x.day>=week&&x.day<=today)),month:count(scoped.filter(x=>x.day>=today.slice(0,7)+'-01'&&x.day<=today)),daily,managers,by_kind,actions:selected,
  system_events:scoped.filter(x=>x.day>=from&&x.day<=to&&!x.human).length,available_from:all.at(-1)?.day||null,

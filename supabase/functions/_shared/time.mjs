@@ -10,4 +10,5 @@ export function daysSince(value, nowMs = Date.now()) {
   const at = timestampMs(value);
   return at ? Math.max(0, Math.floor((nowMs - at) / DAY)) : null;
 }
-export const moscowDay = value => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(value));
+const moscowFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year:'numeric', month:'2-digit', day:'2-digit' });
+export const moscowDay = value => moscowFormatter.format(new Date(value));
