@@ -20,7 +20,7 @@ Deno.serve(async req => {
    readAll(db,'crm_leads','external_id,name,pipeline_external_id'),readAll(db,'crm_users','external_id,name'),readAll(db,'crm_pipelines','external_id,name'),readAll(db,'crm_statuses','external_id,name'),
    db.from('integration_credentials').select('account_domain').eq('source_slug','amocrm').single(),
    db.from('data_sources').select('status,last_success_at,last_error').eq('slug','amocrm').single(),
-   db.from('crm_activity_sync_state').select('history_from,backfilled_from,live_from,updated_at').eq('source_slug','amocrm').maybeSingle()
+   db.from('crm_activity_sync_state').select('history_from,backfilled_from,live_from,live_covered_through,live_progress,history_progress,updated_at').eq('source_slug','amocrm').maybeSingle()
   ]);
   if(account.error||source.error||coverage.error) throw new Error('Не удалось проверить полноту источника');
   const report=activityLedger({events,tasks,leads,users,pipelines,statuses,account_domain:account.data?.account_domain},params);

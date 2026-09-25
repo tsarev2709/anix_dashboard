@@ -1,3 +1,4 @@
+import { syncEventWindow } from '../_shared/event-sync.mjs';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applySigningSetup } from '../_shared/signing-setup.ts';
 import { resolveContractField, contractFormat } from '../_shared/forecast-policy.mjs';
@@ -136,29 +137,25 @@ Deno.serve(async req => {
     const liveFrom = coverage?.live_from || new Date(from * 1000).toISOString();
     const historyFrom = coverage?.history_from || new Date(Date.now() - 180 * 86400000).toISOString();
     const backfillFrom = coverage?.backfilled_from || liveFrom;
-    const backfillTo = new Date(Math.max(new Date(backfillFrom).getTime() - 7 * 86400000, new Date(historyFrom).getTime())).toISOString();
-    const windows = [{ from, to: Math.floor(Date.now()/1000) }];
-    if (backfillFrom > historyFrom) windows.push({ from: Math.floor(new Date(backfillTo).getTime()/1000), to: Math.floor(new Date(backfillFrom).getTime()/1000) });
-    for (const window of windows) {
-      for (let page = 1; page <= 100; page++) {
-        // No entity/type filter: include contact and company edits, merges and communications.
-        const body = await api(`/api/v4/events?limit=100&page=${page}&filter[created_at][from]=${window.from}&filter[created_at][to]=${window.to}&with=lead_name,contact_name,company_name`);
-        const events = body?._embedded?.events || []; if (!events.length) break;
-        const rows = dedupe(events.map((e: any) => ({ source_slug: 'amocrm', external_id: String(e.id), event_type: e.type || 'unknown', entity_external_id: e.entity_id || null, entity_type: e.entity_type || null, created_by_external_id: e.created_by || null, created_at_source: iso(e.created_at) || new Date().toISOString(), value_before: e.value_before || [], value_after: e.value_after || [], raw: e, synced_at: new Date().toISOString() })), x => `${x.source_slug}:${x.external_id}`, 'crm_events');
-        eventsRead += rows.length; await upsert('crm_events', rows);
-        if (!body?._links?.next) break;
-        if (page === 100) throw new Error('amoCRM events pagination limit reached; history is incomplete');
-      }
+    const state: any = {source_slug:'amocrm', history_from:historyFrom,backfilled_from:backfillFrom,live_from:liveFrom,live_covered_through:coverage?.live_covered_through||liveFrom,live_progress:coverage?.live_progress||null,history_progress:coverage?.history_progress||null};
+    const persist=async()=>{const {error}=await db.from('crm_activity_sync_state').upsert({...state,updated_at:new Date().toISOString()});if(error)throw error;};
+    const save=async(events:any[])=>{
+      const rows=dedupe(events.map((e:any)=>({source_slug:'amocrm',external_id:String(e.id),event_type:e.type||'unknown',entity_external_id:e.entity_id||null,entity_type:e.entity_type||null,created_by_external_id:e.created_by||null,created_at_source:iso(e.created_at),value_before:e.value_before||[],value_after:e.value_after||[],raw:e,synced_at:new Date().toISOString()})),x=>`${x.source_slug}:${x.external_id}`,'crm_events');
+      await upsert('crm_events',rows);eventsRead+=rows.length;
+    };
+    const liveWindow=state.live_progress||{from:Math.max(Math.floor(new Date(liveFrom).getTime()/1000),Math.floor(new Date(state.live_covered_through).getTime()/1000)-300),to:Math.floor(Date.now()/1000),page:1};
+    const liveResult=await syncEventWindow({api,save,window:liveWindow,budget:20,checkpoint:async(next:any)=>{state.live_progress=next;if(!next)state.live_covered_through=new Date(liveWindow.to*1000).toISOString();await persist();}});
+    if(backfillFrom>historyFrom){
+      const historyWindow=state.history_progress||{from:Math.floor(Math.max(new Date(backfillFrom).getTime()-86400000,new Date(historyFrom).getTime())/1000),to:Math.floor(new Date(backfillFrom).getTime()/1000),page:1};
+      await syncEventWindow({api,save,window:historyWindow,budget:20,checkpoint:async(next:any)=>{state.history_progress=next;if(!next)state.backfilled_from=new Date(historyWindow.from*1000).toISOString();await persist();}});
     }
-    const { error: checkpointError } = await db.from('crm_activity_sync_state').upsert({ source_slug:'amocrm', history_from:historyFrom, backfilled_from:backfillTo, live_from:liveFrom, updated_at:new Date().toISOString() });
-    if(checkpointError) throw checkpointError;
 
     const forecastSnapshots = await captureForecastSnapshots(db);
     const read = recordsRead + usersRead + pipelineRows.length + rawStatuses.length + tasksRead + eventsRead;
     const written = recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten + tasksRead + eventsRead;
     await db.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: read, records_written: written }).eq('id', runId);
-    await db.from('data_sources').update({ status: 'healthy', last_success_at: new Date().toISOString(), last_attempt_at: new Date().toISOString(), last_error: null }).eq('slug', 'amocrm');
-    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: rawStatuses.length, statusesWritten: statusRows.length, duplicateStatusesCollapsed: rawStatuses.length - statusRows.length, transitionsWritten, tasksRead, eventsRead, forecastSnapshots, expectedCloseField: closeField }), { headers });
+    await db.from('data_sources').update({ status: liveResult.complete ? 'healthy' : 'warning', last_success_at: new Date().toISOString(), last_attempt_at: new Date().toISOString(), last_error: null }).eq('slug', 'amocrm');
+    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: rawStatuses.length, statusesWritten: statusRows.length, duplicateStatusesCollapsed: rawStatuses.length - statusRows.length, transitionsWritten, tasksRead, eventsRead, eventHistoryPending: Boolean(state.live_progress||state.history_progress||state.backfilled_from>historyFrom), liveEventsComplete: liveResult.complete, forecastSnapshots, expectedCloseField: closeField }), { headers });
   } catch (error) {
     if (runId) await db.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: String(error) }).eq('id', runId);
     await db.from('data_sources').update({ status: 'error', last_attempt_at: new Date().toISOString(), last_error: String(error) }).eq('slug', 'amocrm');

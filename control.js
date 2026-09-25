@@ -42,6 +42,7 @@
     const m = state.metrika;
     const errors = { not_configured: 'Подключение ожидает OAuth-доступа к счётчику.', access_denied: 'Нет доступа к счётчику. Проверьте срок действия токена и право чтения.', rate_limited: 'Яндекс ограничил частоту запросов. Обновите позже.' };
     renderMarketingDetails(m);
+    renderSocialAttribution(m);
     if (!m?.available) {
       target.innerHTML = '<div class="control-empty">' + esc(errors[m?.error] || 'Статистика временно недоступна.') + '</div>';
       return;
@@ -50,6 +51,14 @@
     const cards = [['Визиты', 'visits', ''], ['Посетители', 'users', ''], ['Просмотры', 'pageviews', ''], ['Отказы', 'bounce_rate', '%'], ['Среднее время', 'duration_seconds', ' с']];
     const table = (title, rows) => '<div><h4>' + esc(title) + '</h4><table><thead><tr><th scope="col">' + esc(title) + '</th><th scope="col">Визиты</th></tr></thead><tbody>' + (rows.length ? rows.map(r => '<tr><td>' + esc(r.label) + '</td><td>' + esc(number(r.visits)) + '</td></tr>').join('') : '<tr><td colspan="2">Нет визитов</td></tr>') + '</tbody></table></div>';
     target.innerHTML = '<p>' + esc((m.date1 || '') + ' — ' + (m.date2 || '') + ' · обновлено ' + new Date(m.fetched_at).toLocaleString('ru-RU')) + '</p><div class="website-health-grid">' + cards.map(([label, key, unit]) => '<article class="website-health-card"><small>' + esc(label) + '</small><strong>' + esc(number(m.totals[key]) + unit) + '</strong></article>').join('') + '</div><div class="metrika-tables">' + table('По дням', m.daily) + table('Источники переходов', m.sources) + '</div><p class="history-caveat">Источники: последний значимый переход. Часовой пояс счётчика. Данные могут обновляться с задержкой.' + (m.sampled ? ' Яндекс применил выборку.' : '') + '</p>';
+  }
+
+  function renderSocialAttribution(m) {
+    const target=q('#socialAttribution'); if(!target)return;
+    const report=m?.details?.campaigns;
+    if(!m?.available||!report?.available){target.innerHTML='<h3>Переходы на сайт</h3><p>UTM-отчёт Метрики недоступен. Данных для сравнения каналов пока нет.</p>';return;}
+    const rows=report.rows.filter(r=>/^(telegram|tg|vk|vkontakte) \/ /i.test(r.label));
+    target.innerHTML='<h3>Переходы на сайт по размеченным публикациям</h3><p>'+esc(m.date1+' — '+m.date2)+'</p>'+(rows.length?'<div class="report-scroll"><table class="report-table"><thead><tr><th>Канал / кампания / публикация</th><th>Визиты</th><th>Отказы, %</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.label)+'</td><td>'+esc(r.visits)+'</td><td>'+esc(r.bounce_rate)+'</td></tr>').join('')+'</tbody></table></div>':'<p>В полученных строках нет UTM-переходов telegram / tg / vk / vkontakte. Это не означает, что переходов вообще не было.</p>')+'<p class="history-caveat">Это посещения сайта, а не охват публикаций. Срез из первых 50 UTM-сегментов; '+(report.total_rows>report.rows.length?'список неполный. ':'')+(report.sampled?'Метрика применила выборку. ':'')+'Период меняется во вкладке «Сайт и конверсия».</p>';
   }
 
   function renderMarketingDetails(m) {
@@ -175,7 +184,7 @@
       if (status) status.textContent = 'Anix Control · ' + payload.viewer.role + ' · ' + new Date(payload.generated_at).toLocaleString('ru-RU');
     } catch (error) {
       if (status) status.textContent = 'Не удалось загрузить Anix Control: ' + error.message;
-      [q('#contentEntryList'), q('#sourceControlGrid'), q('#featureFlagGrid'), q('#websiteMetricGrid'), q('#metrikaReport')].filter(Boolean).forEach(node => {
+      [q('#contentEntryList'), q('#sourceControlGrid'), q('#featureFlagGrid'), q('#websiteMetricGrid'), q('#metrikaReport'), q('#socialAttribution')].filter(Boolean).forEach(node => {
         node.innerHTML = '<div class="control-empty">' + esc(error.message) + '</div>';
       });
     }
