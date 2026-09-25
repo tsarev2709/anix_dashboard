@@ -1,3 +1,4 @@
+import { readAll } from '../_shared/forecast-data.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const headers = {
@@ -34,18 +35,20 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const now = new Date();
+    const complete = async (table: string, columns: string, order = 'external_id', scope: any = null) => ({data: await readAll(supabase,table,columns,order,'amocrm',scope), error:null});
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const [{ data: leads, error: leadsError }, { data: statuses, error: statusesError }, { data: pipelines, error: pipelinesError }, { data: events, error: eventsError }] = await Promise.all([
-      supabase.from('crm_leads').select('external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,updated_at_source,closed_at_source,raw').eq('source_slug', 'amocrm'),
-      supabase.from('crm_statuses').select('external_id,pipeline_external_id,name,sort_order').eq('source_slug', 'amocrm').order('sort_order'),
-      supabase.from('crm_pipelines').select('external_id,name').eq('source_slug', 'amocrm'),
-      supabase.from('crm_lead_stage_events').select('lead_external_id,pipeline_external_id,status_external_id,observed_at').eq('source_slug', 'amocrm').order('observed_at', { ascending: true }).limit(20000),
+      complete('crm_leads','external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,updated_at_source,closed_at_source,raw','external_id'),
+      complete('crm_statuses','external_id,pipeline_external_id,name,sort_order','external_id'),
+      complete('crm_pipelines','external_id,name','external_id'),
+      complete('crm_lead_stage_events','id,lead_external_id,pipeline_external_id,status_external_id,observed_at','id'),
     ]);
     if (leadsError) throw leadsError;
     if (statusesError) throw statusesError;
     if (pipelinesError) throw pipelinesError;
     if (eventsError) throw eventsError;
 
+    (events || []).sort((a:any,b:any)=>Date.parse(a.observed_at)-Date.parse(b.observed_at));
     const allLeads = leads || [];
     const leadMap = new Map<number, any>(allLeads.map((lead: any) => [Number(lead.external_id), lead]));
     const statusMap = new Map<string, any>((statuses || []).map((s: any) => [key(s.pipeline_external_id, s.external_id), s]));

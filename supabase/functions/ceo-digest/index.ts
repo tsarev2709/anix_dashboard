@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
     const isContractStage = (name: string) => /договор|счет|счёт|тз/.test(norm(name));
     const isPaymentStage = (name: string) => /предоплат|постоплат|ожида.*оплат|оплат.*ожида/.test(norm(name));
     const isLateStage = (name: string) => /кп|предлож|переговор|согласован|договор|счет|счёт|предоплат|постоплат|производств/.test(norm(name));
-    const isWonStage = (name: string) => /успеш|реализован|выигран|closed won/.test(norm(name));
+    const isWonStage = (name: string) => !/не реализован|неуспеш|проигран|lost/.test(norm(name)) && /успеш|реализован|выигран|closed won/.test(norm(name));
 
     const openLeads: any[] = leads.filter((lead: any) => !lead.closed_at_source && ![142,143].includes(Number(lead.status_external_id)) && !pipelineInfo(lead)?.is_archive);
     const pricedDeals = openLeads.map((lead: any) => Number(lead.price || 0)).filter((price: number) => price > 0);
@@ -232,7 +232,7 @@ Deno.serve(async (req: Request) => {
       for (let index = 0; index < pipelineStatuses.length; index++) {
         const status = pipelineStatuses[index];
         const stageKey = key(pipelineId, status.external_id);
-        const nextStatus = pipelineStatuses[index + 1] || null;
+        const nextStatus = [142,143].includes(Number(status.external_id)) ? null : pipelineStatuses[index + 1] || null;
         const nextKey = nextStatus ? key(pipelineId, nextStatus.external_id) : null;
         const current = dealItemsByStage.get(stageKey) || [];
         const completedDurations: number[] = [];
@@ -353,6 +353,7 @@ Deno.serve(async (req: Request) => {
     const weekWindowStart = new Date(nowMs - 9 * DAY).toISOString().slice(0, 10);
     const weekTargetKey = weekTarget.toISOString().slice(0, 10);
     const snapshotMetrics = {
+      calculation_version: 2,
       open_deals: dealItems.length,
       pipeline_amount: sumDeals(dealItems),
       stalled_14_count: stale14.length,
@@ -382,7 +383,7 @@ Deno.serve(async (req: Request) => {
     }, { onConflict: 'snapshot_date' });
     if (snapshotError) throw snapshotError;
 
-    const previousMetrics = previousSnapshot?.metrics || null;
+    const previousMetrics = previousSnapshot?.metrics?.calculation_version === 2 ? previousSnapshot.metrics : null;
     const compare = (metric: string) => {
       const current = Number((snapshotMetrics as any)[metric] || 0);
       if (!previousMetrics || previousMetrics[metric] === undefined || previousMetrics[metric] === null) return { current, previous: null, absolute_change: null, relative_change: null };
@@ -622,7 +623,7 @@ Deno.serve(async (req: Request) => {
       },
       weekly: {
         comparison_available: Boolean(previousMetrics),
-        previous_snapshot_at: previousSnapshot?.captured_at || null,
+        previous_snapshot_at: previousMetrics ? previousSnapshot?.captured_at : null,
         metrics: weeklyMetrics,
       },
       decisions: {
