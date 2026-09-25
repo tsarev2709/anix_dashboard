@@ -175,7 +175,7 @@ function renderSales(payload) {
   qs('#salesMissingData').innerHTML = missing_data.map(item => `<article class="missing-card priority-${item.priority}"><strong>${esc(item.metric)}</strong><p>${esc(item.reason)}</p></article>`).join('');
   qs('#salesUpdated').textContent = source?.last_success_at ? `синхронизация ${dateTime(source.last_success_at)}` : `срез ${dateTime(generated_at)}`;
   if (qs('#overviewSalesUpdated')) qs('#overviewSalesUpdated').textContent = source?.last_success_at ? dateTime(source.last_success_at) : 'amoCRM';
-  qs('#salesNotice').textContent = 'Импортированная база отделена от фактических действий продавца. Касания и звонки считаются по выполненным задачам, этапные KPI — по реальным переходам в amoCRM.';
+  qs('#salesNotice').textContent = 'Этапные KPI — уникальные сделки с зафиксированным переходом в этап или дальше за месяц. Это не число звонков или встреч. Фактические действия — во вкладке «Действия сотрудников». История ещё догружается; показатели периода предварительные.';
 
   snapshot.metrics[0] = { label: 'Открытых сделок', value: String(summary.open_leads), delta: `${summary.completed_tasks_month} выполненных задач в месяце`, direction: 'up' };
   snapshot.metrics[1] = { label: 'Объём воронки', value: budgetKnown ? money(summary.pipeline_value) : 'нет данных', delta: budgetKnown ? `прогноз KPI ${pct(score)}` : 'бюджеты сделок не заполнены', direction: score !== null && score >= .8 ? 'up' : 'down' };

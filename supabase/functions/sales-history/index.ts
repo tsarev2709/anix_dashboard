@@ -1,3 +1,4 @@
+import { readAll } from '../_shared/forecast-data.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const headers = {
@@ -11,16 +12,17 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const now = new Date();
+    const complete = async (table: string, columns: string, order = 'external_id', scope: any = null) => ({data: await readAll(supabase,table,columns,order,'amocrm',scope), error:null});
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const weekStart = new Date(now.getTime() - 7 * 86400000);
     const dayStart = new Date(now); dayStart.setUTCHours(0, 0, 0, 0);
 
     const [{ data: events, error: eventsError }, { data: leads, error: leadsError }, { data: statuses, error: statusesError }, { data: pipelines, error: pipelinesError }, { data: users, error: usersError }] = await Promise.all([
-      supabase.from('crm_lead_stage_events').select('lead_external_id,pipeline_external_id,status_external_id,observed_at').eq('source_slug', 'amocrm').gte('observed_at', monthStart.toISOString()).order('observed_at', { ascending: false }),
-      supabase.from('crm_leads').select('external_id,name,responsible_user_external_id').eq('source_slug', 'amocrm'),
-      supabase.from('crm_statuses').select('external_id,pipeline_external_id,name,sort_order').eq('source_slug', 'amocrm'),
-      supabase.from('crm_pipelines').select('external_id,name').eq('source_slug', 'amocrm'),
-      supabase.from('crm_users').select('external_id,name,is_admin,is_active').eq('source_slug', 'amocrm'),
+      complete('crm_lead_stage_events','id,lead_external_id,pipeline_external_id,status_external_id,observed_at','id', (q: any) => q.gte('observed_at', monthStart.toISOString())),
+      complete('crm_leads','external_id,name,responsible_user_external_id','external_id'),
+      complete('crm_statuses','external_id,pipeline_external_id,name,sort_order','external_id'),
+      complete('crm_pipelines','external_id,name','external_id'),
+      complete('crm_users','external_id,name,is_admin,is_active','external_id'),
     ]);
     if (eventsError) throw eventsError;
     if (leadsError) throw leadsError;

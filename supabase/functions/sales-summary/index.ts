@@ -1,3 +1,6 @@
+import { moscowDay } from '../_shared/time.mjs';
+import { readActivityEvents } from '../_shared/activity-reader.mjs';
+import { readAll } from '../_shared/forecast-data.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const headers = {
@@ -23,9 +26,9 @@ const funnel = [
   { id: 'interest', label: 'Интерес подтверждён', names: ['интерес подтвержден', 'интерес подтверждён'] },
   { id: 'meeting_set', label: 'Встреча назначена', names: ['встреча назначена'] },
   { id: 'sql', label: 'Встреча проведена (SQL)', names: ['встреча проведена (sql)'] },
-  { id: 'proposal_preparing', label: 'Готовим КП', names: ['готовим кп'] },
-  { id: 'proposal_sent', label: 'КП отправлено', names: ['кп отправлено'] },
-  { id: 'negotiations', label: 'Переговоры', names: ['переговоры'] },
+  { id: 'proposal_preparing', label: 'Готовим КП', names: ['готовим кп','готовим пкп/ткп'] },
+  { id: 'proposal_sent', label: 'КП отправлено', names: ['кп отправлено','пкп/ткп отправлено'] },
+  { id: 'negotiations', label: 'Переговоры', names: ['переговоры','согласование условий'] },
   { id: 'contract', label: 'Договор / счёт', names: ['договор / счет', 'договор / счёт'] },
   { id: 'prepayment', label: 'Предоплата', names: ['предоплата'] },
   { id: 'production', label: 'Производство', names: ['производство'] },
@@ -35,7 +38,7 @@ const funnel = [
 const kpiPlans = [
   { key: 'touches', stageId: 'first_touch', label: 'Первые целевые касания', plan: 1000, unit: 'событий' },
   { key: 'conversations', stageId: 'dialog', label: 'Начатые общения', plan: 250, unit: 'событий' },
-  { key: 'calls', label: 'Проведённые встречи / ВКС', plan: 25, unit: 'событий', source: 'tasks' },
+  { key: 'calls', stageId:'sql', label: 'Встречи: достигнут этап SQL', plan: 25, unit: 'сделок' },
   { key: 'sql', stageId: 'sql', label: 'Квалифицированные лиды / SQL', plan: 10, unit: 'событий' },
   { key: 'proposals', stageId: 'proposal_sent', label: 'Отправленные КП', plan: 5, unit: 'событий' },
   { key: 'contracts', stageId: 'contract', label: 'Договоры / счета', plan: 3, unit: 'событий' },
@@ -47,10 +50,12 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
     const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const complete = async (table: string, columns: string, order = 'external_id', scope: any = null) => ({data: await readAll(supabase,table,columns,order,'amocrm',scope), error:null});
+    const today=moscowDay(now);
+    const monthStart = new Date(today.slice(0,7)+'-01T00:00:00+03:00');
+    const monthEnd = new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),1)-3*3600000);
     const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
-    const elapsedDays = Math.max(1, now.getUTCDate());
+    const elapsedDays = Number(today.slice(8,10));
     const elapsedRatio = Math.min(1, elapsedDays / daysInMonth);
 
     const [
@@ -59,14 +64,14 @@ Deno.serve(async (req) => {
       { data: source, error: sourceError }, { data: stageEvents, error: stageEventsError },
       { data: tasks, error: tasksError }, { data: crmEvents, error: crmEventsError },
     ] = await Promise.all([
-      supabase.from('crm_leads').select('external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,raw').eq('source_slug', 'amocrm'),
-      supabase.from('crm_statuses').select('external_id,pipeline_external_id,name,sort_order,color').eq('source_slug', 'amocrm').order('sort_order'),
-      supabase.from('crm_pipelines').select('external_id,name,is_main,is_archive').eq('source_slug', 'amocrm'),
-      supabase.from('crm_users').select('external_id,name,email,is_admin,is_active').eq('source_slug', 'amocrm'),
+      complete('crm_leads','external_id,name,price,pipeline_external_id,status_external_id,responsible_user_external_id,created_at_source,updated_at_source,closed_at_source,raw','external_id'),
+      complete('crm_statuses','external_id,pipeline_external_id,name,sort_order,color','external_id'),
+      complete('crm_pipelines','external_id,name,is_main,is_archive','external_id'),
+      complete('crm_users','external_id,name,email,is_admin,is_active','external_id'),
       supabase.from('data_sources').select('status,last_success_at,last_error').eq('slug', 'amocrm').single(),
-      supabase.from('crm_lead_stage_events').select('lead_external_id,pipeline_external_id,status_external_id,observed_at').eq('source_slug', 'amocrm').gte('observed_at', monthStart.toISOString()).lt('observed_at', monthEnd.toISOString()).limit(30000),
-      supabase.from('crm_tasks').select('external_id,entity_external_id,responsible_user_external_id,task_type_id,text,result_text,is_completed,complete_till,updated_at_source').eq('source_slug', 'amocrm').eq('is_completed', true).gte('updated_at_source', monthStart.toISOString()).lt('updated_at_source', monthEnd.toISOString()).limit(30000),
-      supabase.from('crm_events').select('external_id,event_type,entity_external_id,entity_type,created_by_external_id,created_at_source,value_before,value_after').eq('source_slug', 'amocrm').gte('created_at_source', monthStart.toISOString()).lt('created_at_source', monthEnd.toISOString()).limit(30000),
+      complete('crm_lead_stage_events','id,lead_external_id,pipeline_external_id,status_external_id,observed_at','id', (q: any) => q.gte('observed_at', monthStart.toISOString()).lt('observed_at', monthEnd.toISOString())),
+      complete('crm_tasks','external_id,entity_external_id,responsible_user_external_id,task_type_id,text,result_text,is_completed,complete_till,updated_at_source','external_id', (q: any) => q.eq('is_completed', true).gte('updated_at_source', monthStart.toISOString()).lt('updated_at_source', monthEnd.toISOString())),
+      readActivityEvents(supabase,{since:monthStart.toISOString(),until:monthEnd.toISOString()}).then(data=>({data,error:null})),
     ]);
     if (leadsError) throw leadsError; if (statusesError) throw statusesError; if (pipelinesError) throw pipelinesError;
     if (usersError) throw usersError; if (sourceError) throw sourceError; if (stageEventsError) throw stageEventsError;
@@ -85,7 +90,7 @@ Deno.serve(async (req) => {
     const managerName = (id: unknown) => userMap.get(Number(id || 0))?.name || `Пользователь #${id || '—'}`;
     const findStatus = (pipelineId: unknown, statusId: unknown) => statusMap.get(statusKey(pipelineId, statusId));
 
-    const openLeads = allLeads.filter((lead: any) => !lead.closed_at_source);
+    const openLeads = allLeads.filter((lead: any) => !lead.closed_at_source && ![142,143].includes(Number(lead.status_external_id)) && !pipelineMap.get(Number(lead.pipeline_external_id))?.is_archive);
     const closedLeads = allLeads.filter((lead: any) => Boolean(lead.closed_at_source));
     const pricedOpenLeads = openLeads.filter((lead: any) => Number(lead.price || 0) > 0);
     const pipelineValue = pricedOpenLeads.reduce((sum: number, lead: any) => sum + Number(lead.price || 0), 0);
@@ -105,23 +110,17 @@ Deno.serve(async (req) => {
     // Highest funnel milestone reached by each lead during the month.
     // Any later milestone implies all preceding KPI milestones were also achieved.
     const highestReached = new Map<number, { index: number; at: string; inferred: boolean }>();
-    for (const event of stageEvents || []) {
+    for (const raw of crmEvents || []) {
+      if(raw.event_type !== 'lead_status_changed' || !['lead','leads'].includes(raw.entity_type)) continue;
+      const status = raw.value_after?.[0]?.lead_status;
+      if(!status)continue;
+      const event = {lead_external_id:raw.entity_external_id,pipeline_external_id:status.pipeline_id,status_external_id:status.id,observed_at:raw.created_at_source};
       const leadId = Number(event.lead_external_id);
       const index = stageIndexByStatus.get(statusKey(event.pipeline_external_id, event.status_external_id));
       if (index === undefined) continue;
       const existing = highestReached.get(leadId);
       if (!existing || index > existing.index) highestReached.set(leadId, { index, at: event.observed_at, inferred: false });
     }
-    // Backfill late-stage cards changed this month when historical intermediate events were not captured yet.
-    for (const lead of allLeads) {
-      const leadId = Number(lead.external_id);
-      if (highestReached.has(leadId)) continue;
-      const updated = new Date(lead.updated_at_source || 0);
-      if (updated < monthStart || updated >= monthEnd) continue;
-      const index = stageIndexByStatus.get(statusKey(lead.pipeline_external_id, lead.status_external_id));
-      if (index !== undefined && index >= funnel.findIndex(stage => stage.id === 'dialog')) highestReached.set(leadId, { index, at: updated.toISOString(), inferred: true });
-    }
-
     const reachedSets = new Map<string, Set<number>>();
     funnel.forEach(stage => reachedSets.set(stage.id, new Set()));
     for (const [leadId, reached] of highestReached.entries()) {
@@ -155,7 +154,7 @@ Deno.serve(async (req) => {
     for (const lead of allLeads) {
       const managerId = Number(lead.responsible_user_external_id || 0); if (!managerId) continue;
       const row = ensureManager(managerId);
-      if (!lead.closed_at_source) { row.open += 1; row.pipeline_value += Number(lead.price || 0); }
+      if (openLeads.includes(lead)) { row.open += 1; row.pipeline_value += Number(lead.price || 0); }
       const reached = highestReached.get(Number(lead.external_id));
       if (reached) for (const plan of kpiPlans.filter(item => item.stageId)) {
         const targetIndex = funnel.findIndex(stage => stage.id === plan.stageId);
@@ -169,7 +168,7 @@ Deno.serve(async (req) => {
       const leadId = Number(task.entity_external_id || 0); if (leadId) meetingLeadsByManager.get(managerId)!.add(leadId);
     }
     for (const task of tasks || []) { const id = Number(task.responsible_user_external_id || 0); if (id) ensureManager(id).completed_tasks_month += 1; }
-    for (const [id, leadIds] of meetingLeadsByManager.entries()) ensureManager(id).kpis.calls = leadIds.size;
+    // Calls KPI uses the SQL stage evidence, never completion text.
     const managers = [...managerRows.values()].map(row => {
       const completionValues = kpiPlans.map(plan => Math.min(1.25, Number(row.kpis[plan.key] || 0) / plan.plan));
       row.kpi_completion = completionValues.reduce((a, b) => a + b, 0) / completionValues.length;

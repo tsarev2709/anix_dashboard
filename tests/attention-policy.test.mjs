@@ -19,3 +19,7 @@ test('activity SQL window covers selected dates plus all summary periods in Mosc
  assert.equal(w.since,'2025-11-30T21:00:00.000Z');assert.equal(w.until,'2026-03-02T21:00:00.000Z');
  assert.throws(()=>activityWindow({from:'2026-02-30',to:'2026-03-01'}),/invalid_period/);
 });
+test('bulk cold prospecting overdue tasks are one backlog, not thousands of emergencies',()=>{
+ assert.equal(salesAttention({stage_name:'Первое касание сделано',stale_days:1,overdue_task_days:5,has_next_step:true},now).bucket,'backlog');
+ assert.equal(salesAttention({stage_name:'Диалог',stale_days:1,overdue_task_days:5,has_next_step:true},now).severity,'critical');
+});
