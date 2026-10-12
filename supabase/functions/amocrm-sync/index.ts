@@ -4,6 +4,7 @@ import { applySigningSetup } from '../_shared/signing-setup.ts';
 import { resolveContractField, contractFormat } from '../_shared/forecast-policy.mjs';
 import { resolveCloseField, extractCloseDate } from '../_shared/forecast-fields.mjs';
 import { captureForecastSnapshots } from '../_shared/forecast-data.ts';
+import { processTenderInbox } from '../_shared/tender-intake.ts';
 
 const headers = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -90,6 +91,14 @@ Deno.serve(async req => {
       await applySigningSetup(db, api, () => metadata('/api/v4/leads/custom_fields', 'custom_fields'), forecastSettings);
       customFields = await metadata('/api/v4/leads/custom_fields', 'custom_fields');
     }
+    let tenderIntake: any = { read: 0, created: 0, updated: 0, expired: 0, failed: 0, fieldsCreated: 0 };
+    try {
+      tenderIntake = await processTenderInbox(db, api, customFields);
+      if (tenderIntake.fieldsCreated) customFields = await metadata('/api/v4/leads/custom_fields', 'custom_fields');
+    } catch (error) {
+      tenderIntake = { ok: false, error: String(error) };
+      console.error('Tender intake failed; regular amoCRM sync continues:', error);
+    }
     const lossReasons = await metadata('/api/v4/leads/loss_reasons', 'loss_reasons');
     const metadataAt = new Date().toISOString();
     await upsert('crm_lead_custom_fields', customFields.map(f => ({ source_slug: 'amocrm', external_id: f.id, name: f.name, code: f.code, field_type: f.type, synced_at: metadataAt })));
@@ -155,7 +164,7 @@ Deno.serve(async req => {
     const written = recordsWritten + usersRead + pipelineRows.length + statusRows.length + transitionsWritten + tasksRead + eventsRead;
     await db.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'success', records_read: read, records_written: written }).eq('id', runId);
     await db.from('data_sources').update({ status: liveResult.complete ? 'healthy' : 'warning', last_success_at: new Date().toISOString(), last_attempt_at: new Date().toISOString(), last_error: null }).eq('slug', 'amocrm');
-    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: rawStatuses.length, statusesWritten: statusRows.length, duplicateStatusesCollapsed: rawStatuses.length - statusRows.length, transitionsWritten, tasksRead, eventsRead, eventHistoryPending: Boolean(state.live_progress||state.history_progress||state.backfilled_from>historyFrom), liveEventsComplete: liveResult.complete, forecastSnapshots, expectedCloseField: closeField }), { headers });
+    return new Response(JSON.stringify({ ok: true, recordsRead, recordsWritten, usersRead, pipelinesRead: pipelineRows.length, statusesRead: rawStatuses.length, statusesWritten: statusRows.length, duplicateStatusesCollapsed: rawStatuses.length - statusRows.length, tenderIntake, transitionsWritten, tasksRead, eventsRead, eventHistoryPending: Boolean(state.live_progress||state.history_progress||state.backfilled_from>historyFrom), liveEventsComplete: liveResult.complete, forecastSnapshots, expectedCloseField: closeField }), { headers });
   } catch (error) {
     if (runId) await db.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: String(error) }).eq('id', runId);
     await db.from('data_sources').update({ status: 'error', last_attempt_at: new Date().toISOString(), last_error: String(error) }).eq('slug', 'amocrm');
