@@ -53,6 +53,7 @@ jobs:
             supabase/migrations/20260924110000_activity_coverage.sql
             supabase/migrations/20260924170000_activity_resume.sql
             supabase/migrations/20260925050000_activity_time_index.sql
+            supabase/migrations/20261012090000_tender_inbox.sql
           )
 
           for migration in "${migrations[@]}"; do
